@@ -1,0 +1,5 @@
+Layer_depth 10
+Kernel_L_x 5
+Kernel_L_y 5
+Pooling_scale 1
+Max_Rand_Init 1

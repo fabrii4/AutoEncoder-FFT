@@ -183,7 +183,7 @@ void Conv_gpu(vector<vector<vector<float> > >& in, vector<vector<vector<float> >
 
 ////////////////////////////////////////////////////////////////////////////////////
 
-__global__ void backprop_parallel_CFBP(int Nx, int Ny, int dD, int dM, int Nk, int Nl, 
+__global__ void gradient_CFBP(int Nx, int Ny, int dD, int dM, int Nk, int Nl, 
                                  float Norm, int ak, int al, int m, int d, int ik, int il, 
                                  float* __restrict__ const in, float* __restrict__ const out, 
                                  float* __restrict__ const hin, float* __restrict__ const f,
@@ -232,7 +232,7 @@ __global__ void backprop_parallel_CFBP(int Nx, int Ny, int dD, int dM, int Nk, i
    }
 }
 //#define ksize 10
-__global__ void backprop_parallel_CF(int Nx, int Ny, int dD, int dM, int Nk, int Nl, 
+__global__ void gradient_CF(int Nx, int Ny, int dD, int dM, int Nk, int Nl, 
                                  float Norm, int ak, int al, int m, int d, int ik, int il, 
                                  float* __restrict__ const in, float* __restrict__ const out, 
                                  float* __restrict__ const hin, float* __restrict__ const f,
@@ -374,12 +374,12 @@ void backprop_gpu(vector<vector<vector<float> > >& in, vector<vector<vector<floa
                dim3 threads(8,8);
                dim3 blocks(Nx/threads.x+1,Ny/threads.y+1);
                if(k==0 && l==0)               
-                  backprop_parallel_CFBP<<<blocks,threads>>>(Nx,Ny,dD,dM,Nk,Nl,Norm,
+                  gradient_CFBP<<<blocks,threads>>>(Nx,Ny,dD,dM,Nk,Nl,Norm,
                                                  ak,al,m,d,ik,il,
                                                  Cin_d, Cout_d, Chin_d, Cf_d,
                                                  CdDdC_d, CdDdF_d, CdDdB_d, CdDdP_d);
                else
-                  backprop_parallel_CF<<<blocks,threads>>>(Nx,Ny,dD,dM,Nk,Nl,Norm,
+                  gradient_CF<<<blocks,threads>>>(Nx,Ny,dD,dM,Nk,Nl,Norm,
                                                  ak,al,m,d,ik,il,
                                                  Cin_d, Cout_d, Chin_d, Cf_d,
                                                  CdDdC_d, CdDdF_d);
@@ -421,7 +421,7 @@ void backprop_gpu(vector<vector<vector<float> > >& in, vector<vector<vector<floa
 
 ////////////////////////////////////////////////////////////////////////////////////////
 
-__global__ void backprop_parallel_CCBP(int Nx, int Ny, int dD, int dM, int Nk, int Nl, float Norm, int ak, int al,
+__global__ void gradient_CCBP(int Nx, int Ny, int dD, int dM, int Nk, int Nl, float Norm, int ak, int al,
                                  int m, int d, int ik, int il, 
                                  float *in, float *out, float *hin, float *f,
                                  float *dDdC, float *dDdB, float *dDdP)
@@ -473,7 +473,7 @@ __global__ void backprop_parallel_CCBP(int Nx, int Ny, int dD, int dM, int Nk, i
    }
 }
 
-__global__ void backprop_parallel_CC(int Nx, int Ny, int dD, int dM, int Nk, int Nl, float Norm, int ak, int al,
+__global__ void gradient_CC(int Nx, int Ny, int dD, int dM, int Nk, int Nl, float Norm, int ak, int al,
                                  int m, int d, int ik, int il, 
                                  float *in, float *out, float *hin, float *f,
                                  float *dDdC)
@@ -605,11 +605,11 @@ void backprop_gpu_cc(vector<vector<vector<float> > >& in, vector<vector<vector<f
                dim3 threads(8,8);
                dim3 blocks(Nx/threads.x+1,Ny/threads.y+1);
                if(k==0 && l==0)               
-                  backprop_parallel_CCBP<<<blocks,threads>>>(Nx,Ny,dD,dM,Nk,Nl,Norm,ak,al,m,d,ik,il,
+                  gradient_CCBP<<<blocks,threads>>>(Nx,Ny,dD,dM,Nk,Nl,Norm,ak,al,m,d,ik,il,
                                                  Cin_d, Cout_d, Chin_d, Cf_d,
                                                  CdDdC_d, CdDdB_d, CdDdP_d);
                else
-                  backprop_parallel_CC<<<blocks,threads>>>(Nx,Ny,dD,dM,Nk,Nl,Norm,ak,al,m,d,ik,il,
+                  gradient_CC<<<blocks,threads>>>(Nx,Ny,dD,dM,Nk,Nl,Norm,ak,al,m,d,ik,il,
                                                  Cin_d, Cout_d, Chin_d, Cf_d,
                                                  CdDdC_d);
                //sum the parallel results obtained in the kernel to get the gradient

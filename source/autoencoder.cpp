@@ -45,7 +45,7 @@ int main()
    //opencv init
    Mat rgb;
    Mat imgC(Size(Nx,Ny),CV_8UC3);
-   VideoCapture cam(1);
+   VideoCapture cam(0);
    namedWindow("input",CV_WINDOW_NORMAL);
    moveWindow("input",100,100);
    resizeWindow("input", 200,200);

@@ -83,61 +83,83 @@ __global__ void pool(cufftComplex *data, int dD, int Nx, int Ny, int scale)
 
 /////////////////////////////////////////////////////////////
 
-//resize according to spectral pooling
-__global__ void resize(cufftComplex *freq_d, cufftComplex *freqs_d, int dM, int Nx, int Ny, int Nxs, int Nys)
+//resize according to spectral pooling (for even Nx Ny Nxs Nys)
+__global__ void resize(cufftComplex *freq_d, cufftComplex *freqs_d, int dM, int Nx, int Ny, int Nxs, int Nys, float l)
 {
-   if(Nxs<=Nx)
+   int Nyr=Ny/2+1;
+   int Nyrs=Nys/2+1;
+   int ind;
+   int idx = threadIdx.x + blockDim.x*blockIdx.x;
+   if (idx < dM*Nxs*Nyrs)
    {
-      int Nyr=Ny/2+1;
-      int Nyrs=Nys/2+1;
-      int ind;
-      int idx = threadIdx.x + blockDim.x*blockIdx.x;
-      if (idx < dM*Nxs*Nyrs)
+      int d=(int)idx/(Nxs*Nyrs);
+      int i=(int)(idx-d*Nxs*Nyrs)/Nyrs;
+      int j=(int)(idx-d*Nxs*Nyrs-i*Nyrs);
+      if(Nxs<=Nx)
       {
-         int d=(int)idx/(Nxs*Nyrs);
-         int i=(int)(idx-d*Nxs*Nyrs)/Nyrs;
-         int j=(int)(idx-d*Nxs*Nyrs-i*Nyrs);
-         if(i<Nxs/2 && j<Nyrs) ind=d*Nx*Nyr+i*Nyr+j;
-         if(i>=Nxs/2 && j<Nyrs) ind=d*Nx*Nyr+(i+Nx-Nxs)*Nyr+j;
-         freqs_d[idx]=freq_d[ind];
-         //freqs_d[idx].x=1000000;
-         //freqs_d[idx].y=0;
-      }
-   }
-   else
-   {
-      int Nyr=Ny/2+1;
-      int Nyrs=Nys/2+1;
-      int ind;
-      int idx = threadIdx.x + blockDim.x*blockIdx.x;
-      if (idx < dM*Nxs*Nyrs)
-      {
-         int d=(int)idx/(Nxs*Nyrs);
-         int i=(int)(idx-d*Nxs*Nyrs)/Nyrs;
-         int j=(int)(idx-d*Nxs*Nyrs-i*Nyrs);
-         if(i<Nx/2 && j<Nyr)
+         if(j<Nyrs-1)
          {
-            ind=d*Nx*Nyr+i*Nyr+j;
+            if(i<Nxs/2) ind=d*Nx*Nyr+i*Nyr+j;
+            if(i==Nxs/2) ind=d*Nx*Nyr+Nx/2*Nyr+j;
+            if(i>Nxs/2) ind=d*Nx*Nyr+(i+Nx-Nxs)*Nyr+j;
             freqs_d[idx]=freq_d[ind];
          }
-         else if(i>=Nxs-Nx/2 && i<Nxs && j<Nyr) 
+         if(j==Nyrs-1)
          {
-            ind=d*Nx*Nyr+(i-Nxs+Nx)*Nyr+j;
+            if(i<Nxs/2) ind=d*Nx*Nyr+i*Nyr+Nyr-1;
+            if(i==Nxs/2) ind=d*Nx*Nyr+Nx/2*Nyr+Nyr-1;
+            if(i>Nxs/2) ind=d*Nx*Nyr+(i+Nx-Nxs)*Nyr+Nyr-1;
             freqs_d[idx]=freq_d[ind];
          }
-         else 
+      }
+      else
+      {
+         if(j<Nyr-1)
          {
-            freqs_d[idx].x=0;
-            freqs_d[idx].y=0;
+            if(i<Nx/2)
+            {
+               ind=d*Nx*Nyr+i*Nyr+j;
+               freqs_d[idx]=freq_d[ind];
+            }
+            else if(i>Nxs-Nx/2) 
+            {
+               ind=d*Nx*Nyr+(i-Nxs+Nx)*Nyr+j;
+               freqs_d[idx]=freq_d[ind];
+            }
+            else if(i==Nxs/2) 
+            {
+               ind=d*Nx*Nyr+Nx/2*Nyr+j;
+               freqs_d[idx]=freq_d[ind];
+            }
+         }
+         if(j==Nyrs-1)
+         {
+            if(i<Nx/2)
+            {
+               ind=d*Nx*Nyr+i*Nyr+Nyr-1;
+               freqs_d[idx]=freq_d[ind];
+            }
+            else if(i>Nxs-Nx/2) 
+            {
+               ind=d*Nx*Nyr+(i-Nxs+Nx)*Nyr+Nyr-1;
+               freqs_d[idx]=freq_d[ind];
+            }
+            else if(i==Nxs/2) 
+            {
+               ind=d*Nx*Nyr+Nx/2*Nyr+Nyr-1;
+               freqs_d[idx]=freq_d[ind];
+            }
          }
       }
+      //freqs_d[idx].x/=l;
+      //freqs_d[idx].y/=l;
    }
 }
 
 /////////////////////////////////////////////////////////////
 
 //convolution (out must be initialized to zero)
-__global__ void conv_k(cufftComplex *in, cufftComplex *out, cufftComplex *c, cufftReal *b, int dM, int dD, int Nx, int Ny)
+__global__ void conv_k_wrong(cufftComplex *in, cufftComplex *out, cufftComplex *c, cufftReal *b, int dM, int dD, int Nx, int Ny)
 {
    int Nyr=Ny/2+1;
    int idx = threadIdx.x + blockDim.x*blockIdx.x;
@@ -148,11 +170,37 @@ __global__ void conv_k(cufftComplex *in, cufftComplex *out, cufftComplex *c, cuf
       int i=(int)(idx-m*dD*Nx*Nyr-d*Nx*Nyr)/Nyr;
       int j=(int)(idx-m*dD*Nx*Nyr-d*Nx*Nyr-i*Nyr);
       cufftComplex in_t=in[d*Nx*Nyr+i*Nyr+j];
+      in_t.x/=dM;
+      in_t.y/=dM;
       cufftComplex c_t=c[m*dD*Nx*Nyr+d*Nx*Nyr+i*Nyr+j];
       out[m*Nx*Nyr+i*Nyr+j].x+=(in_t.x*c_t.x-in_t.y*c_t.y);
       out[m*Nx*Nyr+i*Nyr+j].y+=(in_t.x*c_t.y+in_t.y*c_t.x);
+//      __syncthreads();
       if(d==0 && i==0 && j==0)
          out[m*Nx*Nyr+i*Nyr+j].x+=b[m]*Nx*Ny;
+   }
+}
+
+__global__ void conv_k(cufftComplex *in, cufftComplex *out, cufftComplex *c, cufftReal *b, int dM, int dD, int Nx, int Ny)
+{
+   int Nyr=Ny/2+1;
+   int idx = threadIdx.x + blockDim.x*blockIdx.x;
+   if (idx < dM*Nx*Nyr)
+   {
+      for(int d=0; d<dD; d++)
+      {
+         int m=(int)idx/(Nx*Nyr);
+         int i=(int)(idx-m*Nx*Nyr)/Nyr;
+         int j=(int)(idx-m*Nx*Nyr-i*Nyr);
+         cufftComplex in_t=in[d*Nx*Nyr+i*Nyr+j];
+         in_t.x/=dM;
+         in_t.y/=dM;
+         cufftComplex c_t=c[m*dD*Nx*Nyr+d*Nx*Nyr+i*Nyr+j];
+         out[m*Nx*Nyr+i*Nyr+j].x+=(in_t.x*c_t.x-in_t.y*c_t.y);
+         out[m*Nx*Nyr+i*Nyr+j].y+=(in_t.x*c_t.y+in_t.y*c_t.x);
+         if(d==0 && i==0 && j==0)
+            out[m*Nx*Nyr+i*Nyr+j].x+=b[m]*Nx*Ny;
+      }
    }
 }
 
@@ -544,22 +592,51 @@ __global__ void pad_k(cufftReal *dck_d, cufftReal *dc_d, int dM, int dD, int Nx,
 /////////////////////////////////////////////////////////////
 
 //compute backpropagation in coordinate space for kernel weights c, f and biases b, p
-__global__ void backprop_d(cufftReal *c_d, cufftReal *f_d, cufftReal *b_d, cufftReal *p_d, cufftReal *dck_d, cufftReal *dfk_d, cufftReal *db_d, cufftReal *dp_d, int dD, int dM, int Nk, int Nl)
+__global__ void backprop_d(cufftReal *c_d, cufftReal *f_d, cufftReal *b_d, cufftReal *p_d, cufftReal *dck_d, cufftReal *dfk_d, cufftReal *db_d, cufftReal *dp_d, cufftReal *Dc_d, cufftReal *Df_d, cufftReal *Db_d, cufftReal *Dp_d, cufftReal *ddc, cufftReal *ddf, cufftReal *ddb, cufftReal *ddp, int dD, int dM, int Nk, int Nl, float del)
 {
-   float del=0.00001;
+   //float del=0.00001, delmax=0.1;
+   float alpha=0.9;
    int idk = threadIdx.x + blockDim.x*blockIdx.x;
    if(idk<dM*dD*Nk*Nl)
    {
-      //int m=(int)idk/(dD*Nk*Nl);
-      //int d=(int)(idk-m*dD*Nk*Nl)/(Nk*Nl);
-      //int k=(int)(idk-m*dD*Nk*Nl-d*Nk*Nl)/Nl;
-      //int l=(int)(idk-m*dD*Nk*Nl-d*Nk*Nl-k*Nl);
-      c_d[idk]+= -del*dck_d[idk];
+      //c update
+      float dDdC=dck_d[idk];
+      float dc=Dc_d[idk];
+//      adapt_rateR(del, delmax, dDdC, ddc[idk], dc);
+      float Dc=(1-alpha)*del*dDdC/((10<abs(dDdC))?abs(dDdC):10)+alpha*dc;
+      c_d[idk]+= -Dc;
+      Dc_d[idk]=Dc;
+//      c_d[idk]+= -del*dck_d[idk];
+      //f update
+      float dDdF=dfk_d[idk];
+      float df=Df_d[idk];
+//      adapt_rateR(del, delmax, dDdF, ddf[idk], df);
+      float Df=(1-alpha)*del*dDdF/((10<abs(dDdF))?abs(dDdF):10)+alpha*df;
+      f_d[idk]+= -Df;
+      Df_d[idk]=Df;
       f_d[idk]+= -del*dfk_d[idk];
+      //b update
       if(idk<dM)
-         b_d[idk]+= -del*db_d[idk];
+      {
+         float dDdB=db_d[idk];
+         float db=Db_d[idk];
+//         adapt_rateR(del, delmax, dDdB, ddb[idk], db);
+         float Db=(1-alpha)*del*dDdB/((10<abs(dDdB))?abs(dDdB):10)+alpha*db;
+         b_d[idk]+= -Db;
+         Db_d[idk]=Db;
+//         b_d[idk]+= -del*db_d[idk];
+      }
+      //p update
       if(idk<dD)
-         p_d[idk]+= -del*dp_d[idk];
+      {
+         float dDdP=dp_d[idk];
+         float dp=Dp_d[idk];
+//         adapt_rateR(del, delmax, dDdP, ddp[idk], dp);
+         float Dp=(1-alpha)*del*dDdP/((10<abs(dDdP))?abs(dDdP):10)+alpha*dp;
+         p_d[idk]+= -Dp;
+         Dp_d[idk]=Dp;
+//         p_d[idk]+= -del*dp_d[idk];
+      }
    }
 
 }
@@ -642,6 +719,7 @@ void fft_inv(cufftComplex *freq_d, vector<vector<vector<float> > >& out)
 
    float norm=1./(Nx*Ny);
    cudaMemcpy(out_h, out_d, Ntot*sizeof(cufftReal), cudaMemcpyDeviceToHost);
+
    for(int i=0;i<Nx;i++)
    {
       for(int j=0;j<Ny;j++)
@@ -655,6 +733,19 @@ void fft_inv(cufftComplex *freq_d, vector<vector<vector<float> > >& out)
          }
       }
    }
+
+//      cout<<"N16inv={";
+//      for(int m=0;m<dM;m++)
+//      {
+//         for(int i=0;i<Nx;i++)
+//         {
+//            for(int j=0;j<Ny;j++)
+//            {
+//               cout<<out[m][i][j]<<",";
+//            }
+//         }
+//      }
+//      cout<<"};"<<endl<<endl;
 
    cufftDestroy(i_plan);
    cudaFreeHost(out_h);
@@ -772,29 +863,31 @@ void kfft_inv(cufftComplex *cfreq_d, cufftReal *b_d, vector<vector<vector<vector
 //Pooling in fft space
 void pool_fft(cufftComplex * &freq_d, int dD, int& Nx, int& Ny, int scale)
 {
-   //crop spectrum around zero frequency
-   //if(scale>0)
-   //   pool<<<blocks,threads>>>(freq_d, dD, Nx, Ny,scale);
-   float l=(float)scale;
-   if(scale<0) l=-1./((float)scale);
-   //resize spectrum
-   int Nxs=Nx/l;
-   int Nys=Ny/l;
-   int threads=256;
-   int blocks=(dD*Nxs*Nys)/threads+1;
-   cufftComplex *freqs_d;
-   cudaMalloc(&freqs_d, dD*Nxs*(Nys/2+1)*sizeof(cufftComplex));
-   //cudaMemcpy(freqs_d, freq_d, dD*Nxs*(Nys/2+1)*sizeof(cufftComplex), 
-   //            cudaMemcpyDeviceToDevice);
-   resize<<<blocks,threads>>>(freq_d, freqs_d, dD, Nx, Ny, Nxs, Nys);
-   cudaFree(freq_d);
-   cudaMalloc(&freq_d, dD*Nxs*(Nys/2+1)*sizeof(cufftComplex));
-   //freq_d=freqs_d;
-   cudaMemcpy(freq_d, freqs_d, dD*Nxs*(Nys/2+1)*sizeof(cufftComplex), 
-               cudaMemcpyDeviceToDevice);
-   cudaFree(freqs_d);
-   Nx=Nxs;
-   Ny=Nys;
+   if(scale!=1)
+   {
+      //crop spectrum around zero frequency
+      float l=(float)scale;
+      if(scale<0) l=-1./((float)scale);
+      //resize spectrum
+      int Nxs=Nx/l;
+      int Nys=Ny/l;
+      int threads=256;
+      int blocks=(dD*Nxs*(Nys/2+1))/threads+1;
+      cufftComplex *freqs_d;
+      cudaMalloc(&freqs_d, dD*Nxs*(Nys/2+1)*sizeof(cufftComplex));
+      //if(Nxs>Nx)
+         cudaMemset(freqs_d, 0, dD*Nxs*(Nys/2+1)*sizeof(cufftComplex));
+
+      resize<<<blocks,threads>>>(freq_d, freqs_d, dD, Nx, Ny, Nxs, Nys, l);
+
+      cudaFree(freq_d);
+      cudaMalloc(&freq_d, dD*Nxs*(Nys/2+1)*sizeof(cufftComplex));
+      cudaMemcpy(freq_d, freqs_d, dD*Nxs*(Nys/2+1)*sizeof(cufftComplex), 
+                  cudaMemcpyDeviceToDevice);
+      cudaFree(freqs_d);
+      Nx=Nxs;
+      Ny=Nys;
+   }
 }
 
 /////////////////////////////////////////////////////////////
@@ -803,15 +896,13 @@ void pool_fft(cufftComplex * &freq_d, int dD, int& Nx, int& Ny, int scale)
 void conv_fft(cufftComplex *freq_d, cufftComplex *ofreq_d, cufftComplex *cfreq_d, cufftReal *b_d, int dM, int dD, int Nx, int Ny)
 {
    cudaMemset(ofreq_d, 0, dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
-   cufftComplex *freqt_d;
-   cudaMalloc(&freqt_d, dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
-   cudaMemcpy(freqt_d, freq_d, dD*Nx*(Ny/2+1)*sizeof(cufftComplex), 
-            cudaMemcpyDeviceToDevice);
+//   int threads=256;
+//   int blocks=dM*dD*Nx*(Ny/2+1)/threads+1;
+////   normalize<<<blocks,threads>>>(freqt_d, dM, dD, Nx, Ny);
+//   conv_k<<<blocks,threads>>>(freq_d, ofreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
    int threads=256;
-   int blocks=dM*dD*Nx*(Ny/2+1)/threads+1;
-   normalize<<<blocks,threads>>>(freqt_d, dM, dD, Nx, Ny);
-   conv_k<<<blocks,threads>>>(freqt_d, ofreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
-   cudaFree(freqt_d);
+   int blocks=dM*Nx*(Ny/2+1)/threads+1;
+   conv_k<<<blocks,threads>>>(freq_d, ofreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
 }
 
 /////////////////////////////////////////////////////////////
@@ -948,16 +1039,7 @@ void load_cfreq(vector<float>& c_freq, vector<float>& net_b, cufftComplex *cfreq
 void StoreLoad_cfreq(vector<vector<float> >& net_cfreq, vector<vector<vector<vector<vector<float> > > > >& net_c, vector<vector<float> >& net_b, cufftComplex *cfreq_d, cufftReal *b_d, int dM, int dD, int Nx, int Ny, int n)
 {
          if(net_cfreq.size() < net_c.size()) //cfreq not yet computed and stored
-         //if(true)
          {
-//            int Nk=net_c[n][0][0].size();
-//            int Nl=net_c[n][0][0][0].size();
-//            cufftComplex *kfreq_d;
-//            cudaMalloc(&kfreq_d, dM*dD*Nk*(Nl/2+1)*sizeof(cufftComplex));
-//            kfft(net_c[n], net_b[n], cfreq_d, b_d);
-//            kernel_padf(kfreq_d, cfreq_d, dM, dD, Nx, Ny, Nk, Nl);
-//            cudaFree(kfreq_d);
-
             vector<vector<vector<vector<float> > > > c_pad;
             kernel_pad(net_c[n], c_pad, Nx, Ny);
             kfft(c_pad, net_b[n], cfreq_d, b_d);
@@ -1005,7 +1087,7 @@ float mse_fft(cufftComplex *freq_d, cufftComplex *ofreq_d, int dM, int dD, int N
 /////////////////////////////////////////////////////////////
 
 //backpropagation in coordinate space
-void backprop(cufftReal *c_d, cufftReal *f_d, cufftComplex *cfreq_d, cufftComplex *ffreq_d, cufftReal *b_d, cufftReal *p_d, cufftComplex *fdc_d, cufftComplex *fdf_d, cufftReal *db_d, cufftReal *dp_d, int dM, int dD, int Nx, int Ny, int Nk, int Nl)
+void backprop(cufftReal *c_d, cufftReal *f_d, cufftComplex *cfreq_d, cufftComplex *ffreq_d, cufftReal *b_d, cufftReal *p_d, cufftComplex *fdc_d, cufftComplex *fdf_d, cufftReal *db_d, cufftReal *dp_d, cufftReal *Dc_d, cufftReal *Df_d, cufftReal *Db_d, cufftReal *Dp_d, cufftReal *ddc, cufftReal *ddf, cufftReal *ddb, cufftReal *ddp, int dM, int dD, int Nx, int Ny, int Nk, int Nl, float del)
 {
 
    // cuFFT 2D plans for kernel FFT
@@ -1038,8 +1120,10 @@ void backprop(cufftReal *c_d, cufftReal *f_d, cufftComplex *cfreq_d, cufftComple
    
    //update kernel values in coordinate space
    backprop_d<<<blocks,threads>>>(c_d, f_d, b_d, p_d,  
-                                  dck_d, dfk_d, db_d, dp_d, 
-                                  dD, dM, Nk, Nl);
+                                  dck_d, dfk_d, db_d, dp_d,
+                                  Dc_d, Df_d, Db_d, Dp_d,
+                                  ddc, ddf, ddb, ddp, 
+                                  dD, dM, Nk, Nl, del);
 
    //pad kernel
    cudaMemset(dc_d, 0, dM*dD*Nx*Ny*sizeof(cufftReal));
@@ -1063,7 +1147,7 @@ void backprop(cufftReal *c_d, cufftReal *f_d, cufftComplex *cfreq_d, cufftComple
 
 /////////////////////////////////////////////////////////////
 
-void flatten_kernel(vector<vector<vector<vector<float> > > > c, cufftReal *c_d)
+void flatten_kernel(vector<vector<vector<vector<float> > > >& c, cufftReal *c_d)
 {
 
    int dM=c.size();
@@ -1109,14 +1193,16 @@ void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector
    cufftReal *b_d;
    cudaMalloc(&freq_d, dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
    fft(layers[0],freq_d);
-
    for(int n=0;n<net_c.size();n++)
    {
       if(n<net_c.size()/2) pool_fft(freq_d, dD, Nx, Ny, scale[n]);
       cudaMalloc(&ofreq_d, dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
       cudaMalloc(&cfreq_d, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
       cudaMalloc(&b_d, dM*sizeof(cufftReal));
+      cudaMemset(cfreq_d, 0, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
       StoreLoad_cfreq(net_cfreq, net_c, net_b, cfreq_d, b_d, dM, dD, Nx, Ny, n);
+//cudaMemcpy(ofreq_d, freq_d, dM*Nx*(Ny/2+1)*sizeof(cufftComplex), 
+//                  cudaMemcpyDeviceToDevice);
       conv_fft(freq_d, ofreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
       if(n>=net_c.size()/2) pool_fft(ofreq_d, dM, Nx, Ny, scale[n]);
       cudaFree(freq_d);
@@ -1130,11 +1216,11 @@ void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector
       cudaFree(b_d);
    }
    fft_inv(freq_d,layers.back());
-
    cudaFree(freq_d);
 
 }
 
+/////////////////////////////////////////////////////////////
 
 //run backpropagation in fft space
 void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<float> > >& out, vector<float>& cfreq, vector<vector<vector<vector<float> > > >& c, vector<float>& ffreq, vector<vector<vector<vector<float> > > >& f, vector<float>& b, vector<float>& p, int dM)
@@ -1144,39 +1230,46 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
    int Ny=in[0][0].size();
    int Nk=c[0][0].size();
    int Nl=c[0][0][0].size();
-   cufftComplex *freq_d, *hfreq_d, *ofreq_d, *cfreq_d, *ffreq_d, *cfreq1_d, *ffreq1_d;
-   cufftReal *b_d, *p_d, *b1_d, *p1_d;
-   cufftComplex *dc_d, *df_d, *ddc_d, *ddf_d;
-   cufftReal *db_d, *dp_d, *ddb_d, *ddp_d, *c_d, *f_d;
+   cufftComplex *freq_d, *hfreq_d, *ofreq_d, *cfreq_d, *ffreq_d;
+   cufftReal *c_d, *f_d, *b_d, *p_d;
+   cufftReal *Dc_d, *Df_d, *Db_d, *Dp_d;
+   cufftReal *ddc, *ddf, *ddb, *ddp;
+   cufftComplex *dc_d, *df_d;
+   cufftReal *db_d, *dp_d;
    cudaMalloc(&freq_d, dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMalloc(&hfreq_d, dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMalloc(&ofreq_d, dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMalloc(&cfreq_d, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMalloc(&ffreq_d, dD*dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
+   cudaMalloc(&c_d, dM*dD*Nk*Nl*sizeof(cufftReal));
+   cudaMalloc(&f_d, dD*dM*Nk*Nl*sizeof(cufftReal));
    cudaMalloc(&b_d, dM*sizeof(cufftReal));
    cudaMalloc(&p_d, dD*sizeof(cufftReal));
-   cudaMalloc(&cfreq1_d, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
-   cudaMalloc(&ffreq1_d, dD*dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
-   cudaMalloc(&b1_d, dM*sizeof(cufftReal));
-   cudaMalloc(&p1_d, dD*sizeof(cufftReal));
    cudaMalloc(&dc_d, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMalloc(&df_d, dD*dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMalloc(&db_d, dM*sizeof(cufftReal));
    cudaMalloc(&dp_d, dD*sizeof(cufftReal));
-   cudaMalloc(&ddc_d, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
-   cudaMalloc(&ddf_d, dD*dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
-   cudaMalloc(&ddb_d, dM*sizeof(cufftReal));
-   cudaMalloc(&ddp_d, dD*sizeof(cufftReal));
-   cudaMalloc(&c_d, dM*dD*Nk*Nl*sizeof(cufftReal));
-   cudaMalloc(&f_d, dD*dM*Nk*Nl*sizeof(cufftReal));
+   cudaMalloc(&Dc_d, dM*dD*Nk*Nl*sizeof(cufftReal));
+   cudaMalloc(&Df_d, dD*dM*Nk*Nl*sizeof(cufftReal));
+   cudaMalloc(&Db_d, dM*sizeof(cufftReal));
+   cudaMalloc(&Dp_d, dD*sizeof(cufftReal));
+   cudaMalloc(&ddc, dM*dD*Nk*Nl*sizeof(cufftReal));
+   cudaMalloc(&ddf, dD*dM*Nk*Nl*sizeof(cufftReal));
+   cudaMalloc(&ddb, dM*sizeof(cufftReal));
+   cudaMalloc(&ddp, dD*sizeof(cufftReal));
    cudaMemset(dc_d, 0, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMemset(df_d, 0, dD*dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMemset(db_d, 0, dM*sizeof(cufftReal));
    cudaMemset(dp_d, 0, dD*sizeof(cufftReal));
-   cudaMemset(ddc_d, 0, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
-   cudaMemset(ddf_d, 0, dD*dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
-   cudaMemset(ddb_d, 0, dM*sizeof(cufftReal));
-   cudaMemset(ddp_d, 0, dD*sizeof(cufftReal));
+   cudaMemset(Dc_d, 0, dM*dD*Nk*Nl*sizeof(cufftReal));
+   cudaMemset(Df_d, 0, dD*dM*Nk*Nl*sizeof(cufftReal));
+   cudaMemset(Db_d, 0, dM*sizeof(cufftReal));
+   cudaMemset(Dp_d, 0, dD*sizeof(cufftReal));
+   cudaMemset(ddc, 0, dM*dD*Nk*Nl*sizeof(cufftReal));
+   cudaMemset(ddf, 0, dD*dM*Nk*Nl*sizeof(cufftReal));
+   cudaMemset(ddb, 0, dM*sizeof(cufftReal));
+   cudaMemset(ddp, 0, dD*sizeof(cufftReal));
+
    //fft in out
    fft(in,freq_d);
    fft(out,ofreq_d);
@@ -1191,6 +1284,7 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
    cout<<"mse fft: "<<vmse<<endl;
    //float vmse_prev=vmse;
    //backpropagation
+   float del=0.0002;
    for(int n=0;n<100;n++)
    {
       int threads=256;
@@ -1200,11 +1294,13 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
 //                                    dc_d, df_d, db_d, dp_d, 
 //                                    ddc_d, ddf_d, ddb_d, ddp_d, 
 //                                    dM, dD, Nx, Ny);
+      //float del=del0;
+      //if(vmse<10) del=10*del0;
       gradient_k<<<blocks,threads>>>(freq_d, ofreq_d, cfreq_d, ffreq_d, b_d, p_d,  
                                     dc_d, df_d, db_d, dp_d, dM, dD, Nx, Ny);
-      backprop(c_d, f_d, cfreq_d, ffreq_d, b_d, p_d, 
-               dc_d, df_d, db_d, dp_d, dM, dD, Nx, Ny, Nk, Nl);
-      
+      backprop(c_d, f_d, cfreq_d, ffreq_d, b_d, p_d, dc_d, df_d, db_d, dp_d, 
+               Dc_d, Df_d, Db_d, Dp_d, ddc, ddf, ddb, ddp, dM, dD, Nx, Ny, Nk, Nl, del);
+
       conv_fft(freq_d, hfreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
       conv_fft(hfreq_d, ofreq_d, ffreq_d, p_d, dD, dM, Nx, Ny);
       float vmse=mse_fft(freq_d, ofreq_d, dM, dD, Nx, Ny);
@@ -1238,21 +1334,21 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
    cudaFree(ofreq_d);
    cudaFree(cfreq_d);
    cudaFree(ffreq_d);
+   cudaFree(c_d);
+   cudaFree(f_d);
    cudaFree(b_d);
    cudaFree(p_d);
-   cudaFree(cfreq1_d);
-   cudaFree(ffreq1_d);
-   cudaFree(b1_d);
-   cudaFree(p1_d);
    cudaFree(dc_d);
    cudaFree(df_d);
    cudaFree(db_d);
    cudaFree(dp_d);
-   cudaFree(ddc_d);
-   cudaFree(ddf_d);
-   cudaFree(ddb_d);
-   cudaFree(ddp_d);
-   cudaFree(c_d);
-   cudaFree(f_d);
+   cudaFree(Dc_d);
+   cudaFree(Df_d);
+   cudaFree(Db_d);
+   cudaFree(Dp_d);
+   cudaFree(ddc);
+   cudaFree(ddf);
+   cudaFree(ddb);
+   cudaFree(ddp);
 }
 

@@ -44,6 +44,7 @@ int main()
 
    //opencv init
    Mat rgb;
+   rgb = imread("../test_cuda/cuFFT/kathmandu1.jpg", CV_LOAD_IMAGE_COLOR);
    Mat imgC(Size(Nx,Ny),CV_8UC3);
    VideoCapture cam(0);
    namedWindow("input",CV_WINDOW_NORMAL);
@@ -85,7 +86,7 @@ int main()
    int n_l=0;  //select active layer
    int gpu=1;  //activate gpu
    int sym=0; //symmetric weights
-   int fft=0; //activate fft convolution
+   int fft=1; //activate fft convolution
 
    //Init random convolutional filters
    srand(time(0));
@@ -115,7 +116,7 @@ int main()
    {
 //if(count==110) count=0;
 //count++;
-      cam>>rgb;
+      //cam>>rgb;
 //string fname="../../tensorflow/img_train/train_"+to_string(count)+".jpg";
 //cout<<fname<<endl;
 //rgb=imread(fname, CV_LOAD_IMAGE_COLOR);
@@ -125,7 +126,7 @@ int main()
 //cout<<layers[0][0][ix][iy]<<" "<<layers[0][1][ix][iy]<<" "<<layers[0][2][ix][iy]<<endl;
 
       //apply coder-decoder convolutions
-         auto start0 = std::chrono::high_resolution_clock::now();
+         //auto start0 = std::chrono::high_resolution_clock::now();
       if(fft==1)
          autoenc_fft(layers, net_c, net_cfreq, net_b, scale);
       else
@@ -147,8 +148,8 @@ int main()
             }
          }
       }
-         auto finish0 = std::chrono::high_resolution_clock::now();
-         std::chrono::duration<double> elapsed0 = finish0 - start0;
+         //auto finish0 = std::chrono::high_resolution_clock::now();
+         //std::chrono::duration<double> elapsed0 = finish0 - start0;
          //std::cout << "Convolution Time: " << elapsed0.count() << " s\r"<<flush;
 
 
@@ -209,7 +210,7 @@ int main()
                                  net_b[net_c.size()-1-n_l], del);
          auto finish = std::chrono::high_resolution_clock::now();
          std::chrono::duration<double> elapsed = finish - start;
-         //std::cout << "Time: " << elapsed.count() << " s\n";
+         std::cout << "Time: " << elapsed.count() << " s\n";
       }
 
 //ix=126,iy=208;

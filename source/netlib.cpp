@@ -60,9 +60,17 @@ void SpinToImage_C(Mat& img, vector<vector<vector<float> > >& spin)
       for(int j=0;j<Ny;j++)
       {
          Vec3b col;
-         col[0]=(int)(spin[0][i][j]);//*255); //B
-         col[1]=(int)(spin[1][i][j]);//*255); //G
-         col[2]=(int)(spin[2][i][j]);//*255); //R
+         int val;
+         for(int m=0;m<3;m++)
+         {
+            val=(int)round(spin[m][i][j]);
+            val=val<=255?val:255;
+            val=val>=0?val:0;
+            col[m]=val;
+         }
+//         col[0]=(int)round(spin[0][i][j]);//*255); //B
+//         col[1]=(int)round(spin[1][i][j]);//*255); //G
+//         col[2]=(int)round(spin[2][i][j]);//*255); //R
          img.at<Vec3b>(j,i)=col;
       }
    }
@@ -262,18 +270,18 @@ void SaveLoad_conv(vector<vector<vector<vector<float> > > >& c, vector<float>& b
 
 void LoadParam(int& dM, int& Lk, int& Ll, int& scal, float& rmax)
 {
-   vector<int> values;
-   int param_value;
+   vector<float> values;
+   float param_value;
    string param_name;
    ifstream file("New_Layer_Param.txt");
    while ( file >> param_name >> param_value )
    {
        values.push_back(param_value);
    }
-   dM=values[0];
-   Lk=values[1];
-   Ll=values[2];
-   scal=values[3];
+   dM=(int)values[0];
+   Lk=(int)values[1];
+   Ll=(int)values[2];
+   scal=(int)values[3];
    rmax=values[4];
 }
 

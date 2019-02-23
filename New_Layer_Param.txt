@@ -2,4 +2,4 @@ Layer_depth 20
 Kernel_L_x 0
 Kernel_L_y 0
 Pooling_scale 2
-Max_Rand_Init 5
+Max_Rand_Init 1

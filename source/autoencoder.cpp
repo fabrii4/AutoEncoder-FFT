@@ -44,7 +44,7 @@ int main()
 
    //opencv init
    Mat rgb;
-   rgb = imread("../test_cuda/cuFFT/kathmandu1.jpg", CV_LOAD_IMAGE_COLOR);
+   //rgb = imread("../test_cuda/cuFFT/kathmandu1.jpg", CV_LOAD_IMAGE_COLOR);
    Mat imgC(Size(Nx,Ny),CV_8UC3);
    VideoCapture cam(0);
    namedWindow("input",CV_WINDOW_NORMAL);
@@ -87,6 +87,7 @@ int main()
    int gpu=1;  //activate gpu
    int sym=0; //symmetric weights
    int fft=1; //activate fft convolution
+   int fft_l=0; //activate inverse fft transform on each layer
 
    //Init random convolutional filters
    srand(time(0));
@@ -116,7 +117,7 @@ int main()
    {
 //if(count==110) count=0;
 //count++;
-      //cam>>rgb;
+      cam>>rgb;
 //string fname="../../tensorflow/img_train/train_"+to_string(count)+".jpg";
 //cout<<fname<<endl;
 //rgb=imread(fname, CV_LOAD_IMAGE_COLOR);
@@ -128,7 +129,7 @@ int main()
       //apply coder-decoder convolutions
          //auto start0 = std::chrono::high_resolution_clock::now();
       if(fft==1)
-         autoenc_fft(layers, net_c, net_cfreq, net_b, scale);
+         autoenc_fft(layers, net_c, net_cfreq, net_b, scale, fft_l);
       else
       {
          for(int n=0;n<net_c.size();n++)
@@ -201,9 +202,9 @@ int main()
          }
          else if(gpu==1 && fft==1)
          {
-            backprop_fft(layers[0], layers.back(), net_cfreq[n_l], net_c[n_l], 
+            backprop_fft(in_s, out_s, net_cfreq[n_l], net_c[n_l], 
                          net_cfreq[net_c.size()-1-n_l], net_c[net_c.size()-1-n_l], 
-                         net_b[n_l], net_b[net_c.size()-1-n_l], dM);
+                         net_b[n_l], net_b[net_c.size()-1-n_l], dM, del);
             sel=0;
          }
          else backprop(in_s, out_s, hC_s, net_c[n_l], net_b[n_l], net_c[net_c.size()-1-n_l], 
@@ -281,6 +282,7 @@ int main()
       if(ch=='9') {active=(active+1)%2; cout<<"active learning rate "<<active<<endl;}
       if(ch=='0') {gpu=(gpu+1)%2; cout<<"gpu "<<gpu<<endl;}
       if(ch=='f') {fft=(fft+1)%2; cout<<"fft "<<fft<<endl;}
+      if(ch=='g') {fft_l=(fft_l+1)%2; cout<<"fft_l "<<fft_l<<endl;}
       if(ch=='q') {feat=(feat+1)%(net_c[n_l].size()); cout<<"feature map "<<feat<<endl;}
       if(ch=='w') {feat=(feat-1)%(net_c[n_l].size()); cout<<"feature map "<<feat<<endl;}
       if(ch=='z') 

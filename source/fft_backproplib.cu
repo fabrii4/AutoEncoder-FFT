@@ -1183,7 +1183,7 @@ void flatten_kernel(vector<vector<vector<vector<float> > > >& c, cufftReal *c_d)
 
 
 //run autoencoder in fft space
-void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector<vector<vector<vector<float> > > > >& net_c, vector<vector<float> >& net_cfreq, vector<vector<float> >& net_b, vector<int>& scale)
+void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector<vector<vector<vector<float> > > > >& net_c, vector<vector<float> >& net_cfreq, vector<vector<float> >& net_b, vector<int>& scale, int fft_l)
 {
    int dD=layers[0].size();
    int dM=net_c[0].size();
@@ -1193,9 +1193,14 @@ void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector
    cufftReal *b_d;
    cudaMalloc(&freq_d, dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
    fft(layers[0],freq_d);
+   int l=1;
    for(int n=0;n<net_c.size();n++)
    {
-      if(n<net_c.size()/2) pool_fft(freq_d, dD, Nx, Ny, scale[n]);
+      if(n<net_c.size()/2) 
+      {
+         pool_fft(freq_d, dD, Nx, Ny, scale[n]);
+         if(fft_l) {fft_inv(freq_d,layers[l]); l+=1;}
+      }
       cudaMalloc(&ofreq_d, dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
       cudaMalloc(&cfreq_d, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
       cudaMalloc(&b_d, dM*sizeof(cufftReal));
@@ -1204,7 +1209,12 @@ void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector
 //cudaMemcpy(ofreq_d, freq_d, dM*Nx*(Ny/2+1)*sizeof(cufftComplex), 
 //                  cudaMemcpyDeviceToDevice);
       conv_fft(freq_d, ofreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
-      if(n>=net_c.size()/2) pool_fft(ofreq_d, dM, Nx, Ny, scale[n]);
+      if(fft_l) {fft_inv(freq_d,layers[l]); l+=1;}
+      if(n>=net_c.size()/2) 
+      {
+         pool_fft(ofreq_d, dM, Nx, Ny, scale[n]);
+         if(fft_l) {fft_inv(ofreq_d,layers[l]); l+=1;}
+      }
       cudaFree(freq_d);
       cudaMalloc(&freq_d, dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
       cudaMemcpy(freq_d, ofreq_d, dM*Nx*(Ny/2+1)*sizeof(cufftComplex), 
@@ -1215,7 +1225,7 @@ void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector
       cudaFree(cfreq_d);
       cudaFree(b_d);
    }
-   fft_inv(freq_d,layers.back());
+   if(!fft_l) fft_inv(freq_d,layers.back());
    cudaFree(freq_d);
 
 }
@@ -1223,7 +1233,7 @@ void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector
 /////////////////////////////////////////////////////////////
 
 //run backpropagation in fft space
-void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<float> > >& out, vector<float>& cfreq, vector<vector<vector<vector<float> > > >& c, vector<float>& ffreq, vector<vector<vector<vector<float> > > >& f, vector<float>& b, vector<float>& p, int dM)
+void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<float> > >& out, vector<float>& cfreq, vector<vector<vector<vector<float> > > >& c, vector<float>& ffreq, vector<vector<vector<vector<float> > > >& f, vector<float>& b, vector<float>& p, int dM, float del0)
 {
    int dD=in.size();
    int Nx=in[0].size();
@@ -1284,7 +1294,8 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
    cout<<"mse fft: "<<vmse<<endl;
    //float vmse_prev=vmse;
    //backpropagation
-   float del=0.0002;
+   //float del=0.00002;
+   float del=0.1*del0;
    for(int n=0;n<100;n++)
    {
       int threads=256;

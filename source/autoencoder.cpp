@@ -31,16 +31,16 @@ int main()
    int M=50;
    //convolution size |k|<2L+1
    int Lk=0, Ll=0;
-   int Nk=2*(2*Lk+1)+1;
-   int Nl=2*(2*Ll+1)+1;
+   int Nk=2*(Lk+1)+1;
+   int Nl=2*(Ll+1)+1;
    //pooling scale
    int s=1;
    //max value in kernels initialization
    float rmax=1.;
    //Load parameters from file
    LoadParam(M,Lk,Ll,s,rmax);
-   Nk=2*(2*Lk+1)+1;
-   Nl=2*(2*Ll+1)+1;
+   Nk=2*(Lk+1)+1;
+   Nl=2*(Ll+1)+1;
 
    //opencv init
    Mat rgb;
@@ -88,6 +88,7 @@ int main()
    int sym=0; //symmetric weights
    int fft=1; //activate fft convolution
    int fft_l=0; //activate inverse fft transform on each layer
+   int maxdiff=0; //activate multiobjective optimization (maximize kernel difference)
 
    //Init random convolutional filters
    srand(time(0));
@@ -204,7 +205,7 @@ int main()
          {
             backprop_fft(in_s, out_s, net_cfreq[n_l], net_c[n_l], 
                          net_cfreq[net_c.size()-1-n_l], net_c[net_c.size()-1-n_l], 
-                         net_b[n_l], net_b[net_c.size()-1-n_l], dM, del);
+                         net_b[n_l], net_b[net_c.size()-1-n_l], dM, del, maxdiff);
             sel=0;
          }
          else backprop(in_s, out_s, hC_s, net_c[n_l], net_b[n_l], net_c[net_c.size()-1-n_l], 
@@ -284,7 +285,8 @@ int main()
       if(ch=='f') {fft=(fft+1)%2; cout<<"fft "<<fft<<endl;}
       if(ch=='g') {fft_l=(fft_l+1)%2; cout<<"fft_l "<<fft_l<<endl;}
       if(ch=='q') {feat=(feat+1)%(net_c[n_l].size()); cout<<"feature map "<<feat<<endl;}
-      if(ch=='w') {feat=(feat-1)%(net_c[n_l].size()); cout<<"feature map "<<feat<<endl;}
+      if(ch=='w') {feat=(feat-1)>0?(feat-1):(net_c[n_l].size()-1)%(net_c[n_l].size()); cout<<"feature map "<<feat<<endl;}
+      if(ch=='m') {maxdiff=(maxdiff+1)%2; cout<<"multiobjective "<<maxdiff<<endl;}
       if(ch=='z') 
       {
          n_l=(n_l+1)%(net_c.size()/2); 
@@ -329,6 +331,8 @@ int main()
          LoadParam(a1,a2,a3,a4, rmax);
          Init_conv(net_c[n_l], net_b[n_l], dM, dD, Nk, Nl, rmax);
          Init_conv(net_c[N-n_l], net_b[N-n_l], dD, dM, Nk, Nl, rmax);
+         //clear fft weights in order to reinitialize it
+         net_cfreq.clear();
          cout<<"Initialize random convolutional weights "<<endl;
       }
       if(ch=='c')
@@ -384,6 +388,8 @@ int main()
          //   SaveLoad_conv(net_c[n], net_b[n], n, 0, 0);
          //   SaveLoad_conv(net_c[N-1-n], net_b[N-1-n], n, 1, 0);
          //}
+         //clear fft weights in order to reinitialize it
+         net_cfreq.clear();
          cout<<"Loaded convolutional weights "<<endl;
       }
       if(ch=='n')
@@ -391,8 +397,8 @@ int main()
          int dM=10, Lk=0, Ll=0, scal=2; 
          float rmax=3;
          LoadParam(dM,Lk,Ll,scal,rmax);
-         int dNk=2*(2*Lk+1)+1;
-         int dNl=2*(2*Ll+1)+1;
+         int dNk=2*(Lk+1)+1;
+         int dNl=2*(Ll+1)+1;
          int n=(layers.size()-1)/2;
          int dD=layers[n].size();
          int dNx=layers[n][0].size();
@@ -430,6 +436,8 @@ int main()
          Init_conv(ddc, ddb, dM, dD, dNk, dNl, 0);
          Init_conv(ddf, ddp, dD, dM, dNk, dNl, 0);
          n_l=n;
+         //clear fft weights in order to reinitialize it
+         net_cfreq.clear();
          cout<<"Added new layer L "<<net_c.size()/2<<endl;
       }
       if(ch=='d')
@@ -453,6 +461,8 @@ int main()
             //Init vectors of previous gradient values ddc=grad(c)(t-1) (used in adaptive learning rate)
             Init_conv(ddc, ddb, dM, dD, Nk, Nl, 0);
             Init_conv(ddf, ddp, dD, dM, Nk, Nl, 0);
+            //clear fft weights in order to reinitialize it
+            net_cfreq.clear();
             cout<<"Deleted last layer"<<endl;
          }
       }

@@ -1,4 +1,4 @@
-Layer_depth 20
+Layer_depth 40
 Kernel_L_x 0
 Kernel_L_y 0
 Pooling_scale 2

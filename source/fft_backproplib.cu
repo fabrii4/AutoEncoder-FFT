@@ -159,47 +159,69 @@ __global__ void resize(cufftComplex *freq_d, cufftComplex *freqs_d, int dM, int 
 /////////////////////////////////////////////////////////////
 
 //convolution (out must be initialized to zero)
-__global__ void conv_k_wrong(cufftComplex *in, cufftComplex *out, cufftComplex *c, cufftReal *b, int dM, int dD, int Nx, int Ny)
-{
-   int Nyr=Ny/2+1;
-   int idx = threadIdx.x + blockDim.x*blockIdx.x;
-   if (idx < dM*dD*Nx*Nyr)
-   {
-      int m=(int)idx/(dD*Nx*Nyr);
-      int d=(int)(idx-m*dD*Nx*Nyr)/(Nx*Nyr);
-      int i=(int)(idx-m*dD*Nx*Nyr-d*Nx*Nyr)/Nyr;
-      int j=(int)(idx-m*dD*Nx*Nyr-d*Nx*Nyr-i*Nyr);
-      cufftComplex in_t=in[d*Nx*Nyr+i*Nyr+j];
-      in_t.x/=dM;
-      in_t.y/=dM;
-      cufftComplex c_t=c[m*dD*Nx*Nyr+d*Nx*Nyr+i*Nyr+j];
-      out[m*Nx*Nyr+i*Nyr+j].x+=(in_t.x*c_t.x-in_t.y*c_t.y);
-      out[m*Nx*Nyr+i*Nyr+j].y+=(in_t.x*c_t.y+in_t.y*c_t.x);
-//      __syncthreads();
-      if(d==0 && i==0 && j==0)
-         out[m*Nx*Nyr+i*Nyr+j].x+=b[m]*Nx*Ny;
-   }
-}
-
 __global__ void conv_k(cufftComplex *in, cufftComplex *out, cufftComplex *c, cufftReal *b, int dM, int dD, int Nx, int Ny)
 {
    int Nyr=Ny/2+1;
    int idx = threadIdx.x + blockDim.x*blockIdx.x;
    if (idx < dM*Nx*Nyr)
    {
+      int m=(int)idx/(Nx*Nyr);
+      int i=(int)(idx-m*Nx*Nyr)/Nyr;
+      int j=(int)(idx-m*Nx*Nyr-i*Nyr);
+      cufftComplex out_t;
+      out_t.x=0; out_t.y=0;
       for(int d=0; d<dD; d++)
       {
-         int m=(int)idx/(Nx*Nyr);
-         int i=(int)(idx-m*Nx*Nyr)/Nyr;
-         int j=(int)(idx-m*Nx*Nyr-i*Nyr);
          cufftComplex in_t=in[d*Nx*Nyr+i*Nyr+j];
          in_t.x/=dM;
          in_t.y/=dM;
          cufftComplex c_t=c[m*dD*Nx*Nyr+d*Nx*Nyr+i*Nyr+j];
-         out[m*Nx*Nyr+i*Nyr+j].x+=(in_t.x*c_t.x-in_t.y*c_t.y);
-         out[m*Nx*Nyr+i*Nyr+j].y+=(in_t.x*c_t.y+in_t.y*c_t.x);
+         //out[m*Nx*Nyr+i*Nyr+j].x+=(in_t.x*c_t.x-in_t.y*c_t.y);
+         //out[m*Nx*Nyr+i*Nyr+j].y+=(in_t.x*c_t.y+in_t.y*c_t.x);
+         out_t.x+=(in_t.x*c_t.x-in_t.y*c_t.y);
+         out_t.y+=(in_t.x*c_t.y+in_t.y*c_t.x);
          if(d==0 && i==0 && j==0)
-            out[m*Nx*Nyr+i*Nyr+j].x+=b[m]*Nx*Ny;
+            out_t.x+=b[m]*Nx*Ny;
+            //out[m*Nx*Nyr+i*Nyr+j].x+=b[m]*Nx*Ny;
+      }
+      out[idx]=out_t;
+   }
+}
+
+__global__ void conv_k1(cufftComplex *in, cufftComplex *out, cufftComplex *c, cufftReal *b, int dM, int dD, int Nx, int Ny)
+{
+   extern __shared__ cufftComplex in_s[];
+   extern __shared__ cufftComplex c_s[];
+   int Nyr=Ny/2+1;
+   int idx = threadIdx.x + blockDim.x*blockIdx.x;
+   if(idx < dM*dD*Nx*Nyr)
+   {
+      if(idx < dD*Nx*Nyr)
+         in_s[idx]=in[idx];
+      c_s[idx]=c[idx];
+      __syncthreads();
+      if (idx < dM*Nx*Nyr)
+      {
+         int m=(int)idx/(Nx*Nyr);
+         int i=(int)(idx-m*Nx*Nyr)/Nyr;
+         int j=(int)(idx-m*Nx*Nyr-i*Nyr);
+         cufftComplex out_t;
+         out_t.x=0; out_t.y=0;
+         for(int d=0; d<dD; d++)
+         {
+            cufftComplex in_t=in_s[d*Nx*Nyr+i*Nyr+j];
+            in_t.x/=dM;
+            in_t.y/=dM;
+            cufftComplex c_t=c_s[m*dD*Nx*Nyr+d*Nx*Nyr+i*Nyr+j];
+            //out[m*Nx*Nyr+i*Nyr+j].x+=(in_t.x*c_t.x-in_t.y*c_t.y);
+            //out[m*Nx*Nyr+i*Nyr+j].y+=(in_t.x*c_t.y+in_t.y*c_t.x);
+            out_t.x+=(in_t.x*c_t.x-in_t.y*c_t.y);
+            out_t.y+=(in_t.x*c_t.y+in_t.y*c_t.x);
+            if(d==0 && i==0 && j==0)
+               out_t.x+=b[m]*Nx*Ny;
+               //out[m*Nx*Nyr+i*Nyr+j].x+=b[m]*Nx*Ny;
+         }
+         out[idx]=out_t;
       }
    }
 }
@@ -223,18 +245,23 @@ __global__ void normalize( cufftComplex* freq_d, int dM, int dD, int Nx, int Ny)
 //copy cufftComplex Ntot array to float 2*Ntot array
 __global__ void copy_out(cufftComplex *cfreq_d, float *Cc_d, int dM, int dD, int Nx, int Ny)
 {
-   int Ntot=dM*dD*Nx*Ny;
+   int Ntot=dM*dD*Nx*Ny*2;
    int idx = threadIdx.x + blockDim.x*blockIdx.x;
-   int m=(int)idx/(dD*Nx*Ny); 
-   int d=(int)(idx-m*dD*Nx*Ny)/(Nx*Ny); 
-   int i=(int)(idx-m*dD*Nx*Ny-d*Nx*Ny)/Ny;
-   int j=(int)(idx-m*dD*Nx*Ny-d*Nx*Ny-i*Ny);
+   int m=(int)idx/(dD*Nx*Ny*2); 
+   int d=(int)(idx-m*dD*Nx*Ny*2)/(Nx*Ny*2); 
+   int i=(int)(idx-m*dD*Nx*Ny*2-d*Nx*Ny*2)/(Ny*2);
+   int j=(int)(idx-m*dD*Nx*Ny*2-d*Nx*Ny*2-i*Ny*2)/2;
    if (idx < Ntot)
    {
-      Cc_d[m*dD*Nx*Ny*2+d*Nx*Ny*2+i*Ny*2+j*2+0]=cfreq_d[idx].x;
-      Cc_d[m*dD*Nx*Ny*2+d*Nx*Ny*2+i*Ny*2+j*2+1]=cfreq_d[idx].y;
+      int ind=m*dD*Nx*Ny+d*Nx*Ny+i*Ny+j;
+      cufftComplex cfreq_t=cfreq_d[ind];
+      float cfreq_val;
+      if(idx%2==0) cfreq_val=cfreq_t.x;
+      else cfreq_val=cfreq_t.y;
+      Cc_d[idx]=cfreq_val;
    }
 }
+
 
 /////////////////////////////////////////////////////////////
 
@@ -614,7 +641,7 @@ __global__ void backprop_d(cufftReal *c_d, cufftReal *f_d, cufftReal *b_d, cufft
       float Df=(1-alpha)*del*dDdF/((10<abs(dDdF))?abs(dDdF):10)+alpha*df;
       f_d[idk]+= -Df;
       Df_d[idk]=Df;
-      f_d[idk]+= -del*dfk_d[idk];
+//      f_d[idk]+= -del*dfk_d[idk];
       //b update
       if(idk<dM)
       {
@@ -639,6 +666,107 @@ __global__ void backprop_d(cufftReal *c_d, cufftReal *f_d, cufftReal *b_d, cufft
       }
    }
 
+}
+
+/////////////////////////////////////////////////////////////
+
+//compute backpropagation in coordinate space for kernel weights c, f and biases b, p in multiobjective optimization (D=w0*D0-w1*D1)
+__global__ void backprop_double(cufftReal *c_d, cufftReal *f_d, cufftReal *b_d, cufftReal *p_d, cufftReal *dck_d, cufftReal *dfk_d, cufftReal *db_d, cufftReal *dp_d, cufftReal *Dc_d, cufftReal *Df_d, cufftReal *Db_d, cufftReal *Dp_d, cufftReal *ddc, cufftReal *ddf, cufftReal *ddb, cufftReal *ddp, cufftReal *cd_d, cufftReal *fd_d, cufftReal *bd_d, cufftReal *pd_d, int dD, int dM, int Nk, int Nl, float del, float w0, float w1)
+{
+   //float del=0.00001, delmax=0.1;
+   float alpha=0.9;
+   int idk = threadIdx.x + blockDim.x*blockIdx.x;
+   if(idk<dM*dD*Nk*Nl)
+   {
+      //c update
+      float dDdC=w0*dck_d[idk]-w1*cd_d[idk];
+      float dc=Dc_d[idk];
+//      adapt_rateR(del, delmax, dDdC, ddc[idk], dc);
+      float Dc=(1-alpha)*del*dDdC/((10<abs(dDdC))?abs(dDdC):10)+alpha*dc;
+      c_d[idk]+= -Dc;
+      Dc_d[idk]=Dc;
+//      c_d[idk]+= -del*dck_d[idk];
+      //f update
+      float dDdF=w0*dfk_d[idk]-w1*fd_d[idk];
+      float df=Df_d[idk];
+//      adapt_rateR(del, delmax, dDdF, ddf[idk], df);
+      float Df=(1-alpha)*del*dDdF/((10<abs(dDdF))?abs(dDdF):10)+alpha*df;
+      f_d[idk]+= -Df;
+      Df_d[idk]=Df;
+//      f_d[idk]+= -del*dfk_d[idk];
+      //b update
+      if(idk<dM)
+      {
+         float dDdB=w0*db_d[idk]-w1*bd_d[idk];
+         float db=Db_d[idk];
+//         adapt_rateR(del, delmax, dDdB, ddb[idk], db);
+         float Db=(1-alpha)*del*dDdB/((10<abs(dDdB))?abs(dDdB):10)+alpha*db;
+         b_d[idk]+= -Db;
+         Db_d[idk]=Db;
+//         b_d[idk]+= -del*db_d[idk];
+      }
+      //p update
+      if(idk<dD)
+      {
+         float dDdP=w0*dp_d[idk]-w1*pd_d[idk];
+         float dp=Dp_d[idk];
+//         adapt_rateR(del, delmax, dDdP, ddp[idk], dp);
+         float Dp=(1-alpha)*del*dDdP/((10<abs(dDdP))?abs(dDdP):10)+alpha*dp;
+         p_d[idk]+= -Dp;
+         Dp_d[idk]=Dp;
+//         p_d[idk]+= -del*dp_d[idk];
+      }
+   }
+
+}
+
+/////////////////////////////////////////////////////////////
+
+//compute gradient for kernel distance to use in multiobjective optimization
+__global__ void gradient_diff(cufftReal *cd_d, cufftReal *fd_d, cufftReal *bd_d, cufftReal *pd_d, cufftReal *c_d, cufftReal *f_d, cufftReal *b_d, cufftReal * p_d, int dD, int dM, int Nk, int Nl)
+{
+
+   int idk = threadIdx.x + blockDim.x*blockIdx.x;
+   if(idk < dD*dM*Nk*Nl)
+   {
+      int m=(int)idk/(dD*Nk*Nl);
+      int d=(int)(idk-m*dD*Nk*Nl)/(Nk*Nl);
+      int k=(int)(idk-m*dD*Nk*Nl-d*Nk*Nl)/Nl;
+      int l=(int)(idk-m*dD*Nk*Nl-d*Nk*Nl-k*Nl);
+      float sum_c=0, sum_f=0, sum_b=0, sum_p=0;
+      for(int m1=0; m1<dM; m1++)
+      {
+         for(int d1=0; d1<dD; d1++)
+         {
+            if(m1!=m && d1!=d)
+            {
+               float den_c=0, den_f=0;
+               for(int k1=0; k1<Nk; k1++)
+               {
+                  for(int l1=0; l1<Nl; l1++)
+                  {
+                     float den_c_t=c_d[m*dD*Nk*Nl+d*Nk*Nl+k1*Nl+l1]-c_d[m1*dD*Nk*Nl+d1*Nk*Nl+k1*Nl+l1];
+                     float den_f_t=f_d[d*dM*Nk*Nl+m*Nk*Nl+k1*Nl+l1]-f_d[d1*dM*Nk*Nl+m1*Nk*Nl+k1*Nl+l1];
+                     den_c+=den_c_t*den_c_t;
+                     den_f+=den_f_t*den_f_t;
+                  }
+               }
+               //den_c*=den_c;
+               //den_f*=den_f;
+               sum_c+=(c_d[m*dD*Nk*Nl+d*Nk*Nl+k*Nl+l]-c_d[m1*dD*Nk*Nl+d1*Nk*Nl+k*Nl+l])/den_c;
+               sum_f+=(f_d[d*dM*Nk*Nl+m*Nk*Nl+k*Nl+l]-f_d[d1*dM*Nk*Nl+m1*Nk*Nl+k*Nl+l])/den_f;
+            }
+            if(m1==0 && d1!=d)
+               sum_p+=1./(p_d[d]-p_d[d1]);
+         }
+         if(m1!=m)
+            sum_b+=1./(b_d[m]-b_d[m1]);
+      }
+      cd_d[m*dD*Nk*Nl+d*Nk*Nl+k*Nl+l]=sum_c;
+      fd_d[d*dM*Nk*Nl+m*Nk*Nl+k*Nl+l]=sum_f;
+      bd_d[m]=sum_b;
+      pd_d[d]=sum_p;
+   }
 }
 
 
@@ -896,10 +1024,6 @@ void pool_fft(cufftComplex * &freq_d, int dD, int& Nx, int& Ny, int scale)
 void conv_fft(cufftComplex *freq_d, cufftComplex *ofreq_d, cufftComplex *cfreq_d, cufftReal *b_d, int dM, int dD, int Nx, int Ny)
 {
    cudaMemset(ofreq_d, 0, dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
-//   int threads=256;
-//   int blocks=dM*dD*Nx*(Ny/2+1)/threads+1;
-////   normalize<<<blocks,threads>>>(freqt_d, dM, dD, Nx, Ny);
-//   conv_k<<<blocks,threads>>>(freq_d, ofreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
    int threads=256;
    int blocks=dM*Nx*(Ny/2+1)/threads+1;
    conv_k<<<blocks,threads>>>(freq_d, ofreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
@@ -1013,7 +1137,7 @@ void store_cfreq(cufftComplex *cfreq_d, vector<float>& c_freq, int dM, int dD, i
    thrust::device_vector<float> c_d(c_h);
    float* Cc_d=thrust::raw_pointer_cast(&c_d[0]);
    int threads=256;
-   int blocks=dM*dD*Nx*Nyr/threads+1;
+   int blocks=2*dM*dD*Nx*Nyr/threads+1;
    copy_out<<<blocks,threads>>>(cfreq_d, Cc_d, dM, dD, Nx, Nyr);
    thrust::copy(c_d.begin(), c_d.end(), c_freq.begin());
 }
@@ -1087,7 +1211,7 @@ float mse_fft(cufftComplex *freq_d, cufftComplex *ofreq_d, int dM, int dD, int N
 /////////////////////////////////////////////////////////////
 
 //backpropagation in coordinate space
-void backprop(cufftReal *c_d, cufftReal *f_d, cufftComplex *cfreq_d, cufftComplex *ffreq_d, cufftReal *b_d, cufftReal *p_d, cufftComplex *fdc_d, cufftComplex *fdf_d, cufftReal *db_d, cufftReal *dp_d, cufftReal *Dc_d, cufftReal *Df_d, cufftReal *Db_d, cufftReal *Dp_d, cufftReal *ddc, cufftReal *ddf, cufftReal *ddb, cufftReal *ddp, int dM, int dD, int Nx, int Ny, int Nk, int Nl, float del)
+void backprop(cufftReal *c_d, cufftReal *f_d, cufftComplex *cfreq_d, cufftComplex *ffreq_d, cufftReal *b_d, cufftReal *p_d, cufftComplex *fdc_d, cufftComplex *fdf_d, cufftReal *db_d, cufftReal *dp_d, cufftReal *Dc_d, cufftReal *Df_d, cufftReal *Db_d, cufftReal *Dp_d, cufftReal *ddc, cufftReal *ddf, cufftReal *ddb, cufftReal *ddp, int dM, int dD, int Nx, int Ny, int Nk, int Nl, float del, int maxdiff)
 {
 
    // cuFFT 2D plans for kernel FFT
@@ -1117,14 +1241,52 @@ void backprop(cufftReal *c_d, cufftReal *f_d, cufftComplex *cfreq_d, cufftComple
    int blocks=(dM*dD*Nk*Nl)/threads+1;
    shrink_k<<<blocks,threads>>>(dc_d, dck_d, dM, dD, Nx, Ny, Nk, Nl);
    shrink_k<<<blocks,threads>>>(df_d, dfk_d, dD, dM, Nx, Ny, Nk, Nl);
-   
-   //update kernel values in coordinate space
-   backprop_d<<<blocks,threads>>>(c_d, f_d, b_d, p_d,  
-                                  dck_d, dfk_d, db_d, dp_d,
-                                  Dc_d, Df_d, Db_d, Dp_d,
-                                  ddc, ddf, ddb, ddp, 
-                                  dD, dM, Nk, Nl, del);
 
+   //multiobjective optimization (min reconstruction error max filter difference)
+   if(maxdiff)
+   {
+      cufftReal *cd_d, *fd_d, *bd_d, *pd_d;
+      cudaMalloc(&cd_d, dM*dD*Nk*Nl*sizeof(cufftReal));
+      cudaMalloc(&fd_d, dD*dM*Nk*Nl*sizeof(cufftReal));
+      cudaMalloc(&bd_d, dM*sizeof(cufftReal));
+      cudaMalloc(&pd_d, dD*sizeof(cufftReal));
+      //gradient to maximize filter difference
+      gradient_diff<<<blocks,threads>>>(cd_d, fd_d, bd_d, pd_d, 
+                                                  c_d, f_d, b_d, p_d, 
+                                                  dD, dM, Nk, Nl);
+
+//      cufftReal *cd_h;//, *fd_h, *bd_h, *pd_h;
+//      cudaMallocHost(&cd_h, dM*dD*Nk*Nl*sizeof(cufftReal));
+//      //cudaMallocHost(&fd_h, dD*dM*Nk*Nl*sizeof(cufftReal));
+//      //cudaMallocHost(&bd_h, dM*sizeof(cufftReal));
+//      //cudaMallocHost(&pd_h, dD*sizeof(cufftReal));
+//      cudaMemcpy(cd_h, cd_d, dM*dD*Nk*Nl*sizeof(cufftReal), cudaMemcpyDeviceToHost);
+//      for(int i=0;i<dM*dD*Nk*Nl;i++) cout<<cd_h[i]<<", ";
+//      cout<<endl;
+//      cudaFreeHost(cd_h);
+
+      //update kernel values in coordinate space
+      float w0=1, w1=10;
+      backprop_double<<<blocks,threads>>>(c_d, f_d, b_d, p_d,  
+                                     dck_d, dfk_d, db_d, dp_d,
+                                     Dc_d, Df_d, Db_d, Dp_d,
+                                     ddc, ddf, ddb, ddp, 
+                                     cd_d, fd_d, bd_d, pd_d,
+                                     dD, dM, Nk, Nl, del, w0, w1);
+      cudaFree(cd_d);
+      cudaFree(fd_d);
+      cudaFree(bd_d);
+      cudaFree(pd_d);
+   }
+   else
+   {
+      //update kernel values in coordinate space
+      backprop_d<<<blocks,threads>>>(c_d, f_d, b_d, p_d,  
+                                     dck_d, dfk_d, db_d, dp_d,
+                                     Dc_d, Df_d, Db_d, Dp_d,
+                                     ddc, ddf, ddb, ddp, 
+                                     dD, dM, Nk, Nl, del);
+   }
    //pad kernel
    cudaMemset(dc_d, 0, dM*dD*Nx*Ny*sizeof(cufftReal));
    cudaMemset(df_d, 0, dM*dD*Nx*Ny*sizeof(cufftReal));
@@ -1209,7 +1371,7 @@ void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector
 //cudaMemcpy(ofreq_d, freq_d, dM*Nx*(Ny/2+1)*sizeof(cufftComplex), 
 //                  cudaMemcpyDeviceToDevice);
       conv_fft(freq_d, ofreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
-      if(fft_l) {fft_inv(freq_d,layers[l]); l+=1;}
+      if(fft_l) {fft_inv(ofreq_d,layers[l]); l+=1;}
       if(n>=net_c.size()/2) 
       {
          pool_fft(ofreq_d, dM, Nx, Ny, scale[n]);
@@ -1233,7 +1395,7 @@ void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector
 /////////////////////////////////////////////////////////////
 
 //run backpropagation in fft space
-void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<float> > >& out, vector<float>& cfreq, vector<vector<vector<vector<float> > > >& c, vector<float>& ffreq, vector<vector<vector<vector<float> > > >& f, vector<float>& b, vector<float>& p, int dM, float del0)
+void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<float> > >& out, vector<float>& cfreq, vector<vector<vector<vector<float> > > >& c, vector<float>& ffreq, vector<vector<vector<vector<float> > > >& f, vector<float>& b, vector<float>& p, int dM, float del0, int maxdiff)
 {
    int dD=in.size();
    int Nx=in[0].size();
@@ -1295,7 +1457,7 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
    //float vmse_prev=vmse;
    //backpropagation
    //float del=0.00002;
-   float del=0.1*del0;
+   float del=0.01*del0;
    for(int n=0;n<100;n++)
    {
       int threads=256;
@@ -1310,7 +1472,8 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
       gradient_k<<<blocks,threads>>>(freq_d, ofreq_d, cfreq_d, ffreq_d, b_d, p_d,  
                                     dc_d, df_d, db_d, dp_d, dM, dD, Nx, Ny);
       backprop(c_d, f_d, cfreq_d, ffreq_d, b_d, p_d, dc_d, df_d, db_d, dp_d, 
-               Dc_d, Df_d, Db_d, Dp_d, ddc, ddf, ddb, ddp, dM, dD, Nx, Ny, Nk, Nl, del);
+               Dc_d, Df_d, Db_d, Dp_d, ddc, ddf, ddb, ddp, 
+               dM, dD, Nx, Ny, Nk, Nl, del, maxdiff);
 
       conv_fft(freq_d, hfreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
       conv_fft(hfreq_d, ofreq_d, ffreq_d, p_d, dD, dM, Nx, Ny);

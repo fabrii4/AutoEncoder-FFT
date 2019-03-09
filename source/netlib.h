@@ -13,7 +13,7 @@ void Pool(std::vector<std::vector<std::vector<float> > >& in, std::vector<std::v
 
 void Init_conv(std::vector<std::vector<std::vector<std::vector<float > > > >& c, std::vector<float>& b, int mS, int dS, int kS, int lS, float max);
 
-void SaveLoad_conv(std::vector<std::vector<std::vector<std::vector<float > > > >& c, std::vector<float>& b, int L, int io, int write);
+void SaveLoad_conv(std::vector<std::vector<std::vector<std::vector<float > > > >& c, std::vector<float>& b, int scale, int L, int io, int write);
 
 void LoadParam(int& dM, int& Lk, int& Ll, int& scal, float& rmax);
 

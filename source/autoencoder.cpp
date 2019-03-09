@@ -44,7 +44,11 @@ int main()
 
    //opencv init
    Mat rgb;
-   //rgb = imread("../test_cuda/cuFFT/kathmandu1.jpg", CV_LOAD_IMAGE_COLOR);
+//   rgb = imread("../test_cuda/cuFFT/plane1.jpg", CV_LOAD_IMAGE_COLOR);
+//   Mat rgbout;
+//   rgbout = imread("../test_cuda/cuFFT/plane1.jpg", CV_LOAD_IMAGE_COLOR);
+//   vector<vector<vector<float> > > expout(D, vector<vector<float> >(Nx, vector<float>(Ny)));
+//   vector<vector<vector<float> > > expout1;
    Mat imgC(Size(Nx,Ny),CV_8UC3);
    VideoCapture cam(0);
    namedWindow("input",CV_WINDOW_NORMAL);
@@ -113,19 +117,13 @@ int main()
    net_b.push_back(p);
    scale.push_back(s);
    scale.push_back(-s);
-//int count=0;
    while(true)
    {
-//if(count==110) count=0;
-//count++;
       cam>>rgb;
-//string fname="../../tensorflow/img_train/train_"+to_string(count)+".jpg";
-//cout<<fname<<endl;
-//rgb=imread(fname, CV_LOAD_IMAGE_COLOR);
       resize(rgb,imgC,Size(Nx,Ny));
       ImageToSpin_C(imgC,layers[0]);
-//int ix=67,iy=115;
-//cout<<layers[0][0][ix][iy]<<" "<<layers[0][1][ix][iy]<<" "<<layers[0][2][ix][iy]<<endl;
+      //resize(rgbout,imgC,Size(Nx,Ny));
+      //ImageToSpin_C(imgC,expout);
 
       //apply coder-decoder convolutions
          //auto start0 = std::chrono::high_resolution_clock::now();
@@ -154,23 +152,6 @@ int main()
          //std::chrono::duration<double> elapsed0 = finish0 - start0;
          //std::cout << "Convolution Time: " << elapsed0.count() << " s\r"<<flush;
 
-
-//Conv_gpu(layers[0], layers[4], net_c[0], net_b[0]);
-
-//for(int k=0;k<net_c[n_l][0][0].size();k++)
-//{
-//   for(int l=0;l<net_c[n_l][0][0][0].size();l++)
-//   {
-//      cout<<setprecision(3)<<net_c[net_c.size()-1-n_l][0][1][k][l]<<" ";
-//   }
-//   cout<<"         ";
-//   for(int l=0;l<net_c[n_l][0][0][0].size();l++)
-//   {
-//      cout<<net_c[n_l][1][0][k][l]<<" ";
-//   }
-//   cout<<endl;
-//}
-//cout<<endl;
 
       //backpropagation
       if(sel==1)
@@ -203,7 +184,9 @@ int main()
          }
          else if(gpu==1 && fft==1)
          {
-            backprop_fft(in_s, out_s, net_cfreq[n_l], net_c[n_l], 
+            //expout1=expout;
+            //if(n_l!=0) expout1=in_s;
+            backprop_fft(in_s, in_s, out_s, net_cfreq[n_l], net_c[n_l], 
                          net_cfreq[net_c.size()-1-n_l], net_c[net_c.size()-1-n_l], 
                          net_b[n_l], net_b[net_c.size()-1-n_l], dM, del, maxdiff);
             sel=0;
@@ -369,8 +352,8 @@ int main()
       if(ch=='s') 
       {
          int N=net_c.size()-1;
-         SaveLoad_conv(net_c[n_l], net_b[n_l], n_l, 0, 1);
-         SaveLoad_conv(net_c[N-n_l], net_b[N-n_l], n_l, 1, 1);
+         SaveLoad_conv(net_c[n_l], net_b[n_l], scale[n_l], n_l, 0, 1);
+         SaveLoad_conv(net_c[N-n_l], net_b[N-n_l], scale[N-n_l], n_l, 1, 1);
          //for(int n=0;n<N/2;n++)
          //{
          //   SaveLoad_conv(net_c[n], net_b[n], n, 0, 1);
@@ -381,8 +364,8 @@ int main()
       if(ch=='l') 
       {
          int N=net_c.size()-1;
-         SaveLoad_conv(net_c[n_l], net_b[n_l], n_l, 0, 0);
-         SaveLoad_conv(net_c[N-n_l], net_b[N-n_l], n_l, 1, 0);
+         SaveLoad_conv(net_c[n_l], net_b[n_l], scale[n_l], n_l, 0, 0);
+         SaveLoad_conv(net_c[N-n_l], net_b[N-n_l], scale[N-n_l], n_l, 1, 0);
          //for(int n=0;n<N/2;n++)
          //{
          //   SaveLoad_conv(net_c[n], net_b[n], n, 0, 0);

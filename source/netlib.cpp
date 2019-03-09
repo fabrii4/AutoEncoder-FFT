@@ -86,6 +86,8 @@ void SpinToImage_V(Mat& img, vector<vector<float> >& spin)
       for(int j=0;j<Ny;j++)
       {
          int intens=1*(int)spin[i][j];
+         //intens=intens<=255?intens:255;
+         //intens=intens>=0?intens:0;
          img.at<uchar>(j,i)=intens;
       }
    }
@@ -215,7 +217,7 @@ void SaveLoad_vec(vector<float>& vec, string path, int write)
 }
 
 //Save/Load Convolutional layer
-void SaveLoad_conv(vector<vector<vector<vector<float> > > >& c, vector<float>& b, int L, int io, int write)
+void SaveLoad_conv(vector<vector<vector<vector<float> > > >& c, vector<float>& b, int scale, int L, int io, int write)
 {
    int dM=c.size();
    int dD=c[0].size();
@@ -228,7 +230,8 @@ void SaveLoad_conv(vector<vector<vector<vector<float> > > >& c, vector<float>& b
    string path("./weights/C_weights_");
    path = path+to_string(L)+inout+\
          "_D="+to_string(dD)+"_M="+to_string(dM)+\
-         "_Lk="+to_string(((Nk-1)/2-1)/2)+"_Ll="+to_string(((Nl-1)/2-1)/2)+".conv";
+         "_Lk="+to_string(((Nk-1)/2-1))+"_Ll="+to_string(((Nl-1)/2-1))+\
+         "_S="+to_string(scale)+".conv";
    cout<<"path "<<L<<inout<<" "<<path<<endl;
    if(write==1) //Save
    {
@@ -319,8 +322,8 @@ void Conv(vector<vector<vector<float> > >& in, vector<vector<vector<float> > >& 
    int Ny=in[0][0].size();
    int Nk=c[0][0].size();
    int Nl=c[0][0][0].size();
-   int ak=((Nk-1)/2-1)/2;
-   int al=((Nl-1)/2-1)/2;
+   int ak=((Nk-1)/2-1);
+   int al=((Nl-1)/2-1);
    int dM=c.size();
    int dD=c[0].size();
    for(int m=0;m<dM;m++)
@@ -365,8 +368,8 @@ void backprop(vector<vector<vector<float> > >& in, vector<vector<vector<float> >
    int dD=c[0].size();
    int Nk=c[0][0].size();
    int Nl=c[0][0][0].size();
-   int ak=((Nk-1)/2-1)/2;
-   int al=((Nl-1)/2-1)/2;
+   int ak=((Nk-1)/2-1);
+   int al=((Nl-1)/2-1);
    float Norm=(dD*dM*Nk*Nl*Nx*Ny);
    float dist=0;
    for(int d1=0;d1<dD;d1++)

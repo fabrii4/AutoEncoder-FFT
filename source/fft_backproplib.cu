@@ -309,107 +309,6 @@ __device__ void adapt_rateR(float& del, float delmax, float dDdX, cufftReal& ddx
 
 /////////////////////////////////////////////////////////////
 
-__global__ void backprop_k(cufftComplex *freq_d, cufftComplex *ofreq_d, cufftComplex *cfreq_d, cufftComplex *ffreq_d, cufftReal *b_d, cufftReal *p_d, cufftComplex *cfreq1_d, cufftComplex *ffreq1_d, cufftReal *b1_d, cufftReal *p1_d, cufftComplex *dc_d, cufftComplex *df_d, cufftReal *db_d, cufftReal *dp_d, cufftComplex *ddc_d, cufftComplex *ddf_d, cufftReal *ddb_d, cufftReal *ddp_d, int dM, int dD, int Nx, int Ny)
-{
-   int Nyr=Ny/2+1;
-   float norm=Nx*Ny;
-   float n=norm*2*dM*dD*Nx*Ny;
-   float delmax=0.5;
-   float delR, delI;
-   float alpha=0.9;
-   int idx = threadIdx.x + blockDim.x*blockIdx.x;
-   if(idx<dM*dD*Nx*Nyr)
-   {
-      int m=(int)idx/(dD*Nx*Nyr);
-      int d=(int)(idx-m*dD*Nx*Nyr)/(Nx*Nyr);
-      int i=(int)(idx-m*dD*Nx*Nyr-d*Nx*Nyr)/Nyr;
-      int j=(int)(idx-m*dD*Nx*Nyr-d*Nx*Nyr-i*Nyr);
-      float Norm=n;
-      if(j>0 && j<Nyr-1) Norm/=2;
-      float sumcRR=0, sumcRI=0, sumcIR=0, sumcII=0;
-      float sumfR=0, sumfI=0;
-      float sumb=0;
-      for(int d1=0;d1<dD;d1++)
-      {
-         //c derivative sums over d
-         int ind=d1*Nx*Nyr+i*Nyr+j;
-         int indf=d1*dM*Nx*Nyr+m*Nx*Nyr+i*Nyr+j;
-         cufftComplex ofreq=ofreq_d[ind];
-         cufftComplex freq=freq_d[ind];
-         cufftComplex ffreq=ffreq_d[indf];
-         sumcRR+=(ofreq.x-freq.x)*ffreq.x;
-         sumcRI+=(ofreq.x-freq.x)*ffreq.y;
-         sumcIR+=(ofreq.y-freq.y)*ffreq.x;
-         sumcII+=(ofreq.y-freq.y)*ffreq.y;
-         //f derivative sums over d
-         int indc=m*dD*Nx*Nyr+d1*Nx*Nyr+i*Nyr+j;
-         cufftComplex cfreq=cfreq_d[indc];
-         sumfR+=cfreq.x*freq.x-cfreq.y*freq.y;
-         sumfI+=cfreq.x*freq.y+cfreq.y*freq.x;
-         //b derivative sum over d
-         if(i==0 && j==0)
-            sumb+=(ofreq.x-freq.x)*ffreq.x+(ofreq.y-freq.y)*ffreq.y;
-      }
-      //c update
-      int ind=d*Nx*Nyr+i*Nyr+j;
-      cufftComplex freq=freq_d[ind];
-      float dDR=sumcRR*freq.x-sumcRI*freq.y+sumcIR*freq.y+sumcII*freq.x;
-      float dDI=-sumcRR*freq.y-sumcRI*freq.x+sumcIR*freq.x-sumcII*freq.y;
-      float dDdCR=dDR/Norm;
-      float dDdCI=dDI/Norm;
-      cufftComplex cfreq=cfreq_d[idx];
-      cufftComplex dc=dc_d[idx];
-      adapt_rate(delR, delI, delmax, dDdCR, dDdCI, ddc_d[idx], dc);
-      dc.x=(1-alpha)*delR*dDdCR/((10<abs(dDdCR))?abs(dDdCR):10)+alpha*dc.x;
-      dc.y=(1-alpha)*delI*dDdCI/((10<abs(dDdCI))?abs(dDdCI):10)+alpha*dc.y;
-      cfreq1_d[idx].x=cfreq.x-dc.x;
-      cfreq1_d[idx].y=cfreq.y-dc.y;
-      dc_d[idx]=dc;
-      //f update
-      int idxf=d*dM*Nx*Nyr+m*Nx*Nyr+i*Nyr+j;
-      float b0=0;
-      if(i==0 && j==0) 
-         b0=b_d[m]*norm;
-      cufftComplex ofreq=ofreq_d[ind];
-      float diffR=ofreq.x-freq.x;
-      float diffI=ofreq.y-freq.y;
-      dDR=diffR*(sumfR+b0)+diffI*sumfI;
-      dDI=-diffR*sumfI+diffI*(sumfR+b0);
-      float dDdFR=dDR/Norm;
-      float dDdFI=dDI/Norm;
-      cufftComplex ffreq=ffreq_d[idxf];
-      cufftComplex df=df_d[idxf];
-      adapt_rate(delR, delI, delmax, dDdFR, dDdFI, ddf_d[idxf], df);
-      df.x=(1-alpha)*delR*dDdFR/((10<abs(dDdFR))?abs(dDdFR):10)+alpha*df.x;
-      df.y=(1-alpha)*delI*dDdFI/((10<abs(dDdFI))?abs(dDdFI):10)+alpha*df.y;
-      ffreq1_d[idxf].x=ffreq.x-df.x;
-      ffreq1_d[idxf].y=ffreq.y-df.y;
-      df_d[idxf]=df;
-      //b update
-      if(i==0 && j==0 && d==0)
-      {
-         float dDdB=sumb*norm/Norm;
-         cufftReal db=db_d[m];
-         adapt_rateR(delR, delmax, dDdB, ddb_d[m], db);
-         db=(1-alpha)*delR*dDdB/((10<abs(dDdB))?abs(dDdB):10)+alpha*db;
-         b1_d[m]=b_d[m]-db;
-         db_d[m]=db;
-      }
-      //p update
-      if(i==0 && j==0 && m==0)
-      {
-         float dDdP=(ofreq.x-freq.x)*norm/Norm;
-         cufftReal dp=dp_d[d];
-         adapt_rateR(delR, delmax, dDdP, ddp_d[d], dp);
-         dp=(1-alpha)*delR*dDdP/((10<abs(dDdP))?abs(dDdP):10)+alpha*dp;
-         p1_d[d]=p_d[d]-dp;
-         dp_d[d]=dp;
-      }
-   }
-}
-
-/////////////////////////////////////////////////////////////
-
 __global__ void gradient_k(cufftComplex *freq_d, cufftComplex *ofreq_d, cufftComplex *cfreq_d, cufftComplex *ffreq_d, cufftReal *b_d, cufftReal *p_d, cufftComplex *dc_d, cufftComplex *df_d, cufftReal *db_d, cufftReal *dp_d, int dM, int dD, int Nx, int Ny)
 {
    int Nyr=Ny/2+1;
@@ -490,6 +389,90 @@ __global__ void gradient_k(cufftComplex *freq_d, cufftComplex *ofreq_d, cufftCom
    }
 }
 
+/////////////////////////////////////////////////////////////
+
+//gradients dD/dC dD/dF dD/dB dD/dP in momentum space. freqin_d: input image, freqout: expected output, ofreq_d: autoencoder output
+__global__ void gradient_k_io(cufftComplex *freqin_d, cufftComplex *freqout_d, cufftComplex *ofreq_d, cufftComplex *cfreq_d, cufftComplex *ffreq_d, cufftReal *b_d, cufftReal *p_d, cufftComplex *dc_d, cufftComplex *df_d, cufftReal *db_d, cufftReal *dp_d, int dM, int dD, int Nx, int Ny)
+{
+   int Nyr=Ny/2+1;
+   float norm=Nx*Ny;
+   float n=norm*2*dM*dD*Nx*Ny;
+   int idx = threadIdx.x + blockDim.x*blockIdx.x;
+   if(idx<dM*dD*Nx*Nyr)
+   {
+      int m=(int)idx/(dD*Nx*Nyr);
+      int d=(int)(idx-m*dD*Nx*Nyr)/(Nx*Nyr);
+      int i=(int)(idx-m*dD*Nx*Nyr-d*Nx*Nyr)/Nyr;
+      int j=(int)(idx-m*dD*Nx*Nyr-d*Nx*Nyr-i*Nyr);
+      float Norm=n;
+      //if(j>0 && (Ny%2==0)?(j<Nyr-1):(j<Nyr)) Norm/=2; 
+      float sumcRR=0, sumcRI=0, sumcIR=0, sumcII=0;
+      float sumfR=0, sumfI=0;
+      float sumb=0;
+      for(int d1=0;d1<dD;d1++)
+      {
+         //c derivative sums over d
+         int ind=d1*Nx*Nyr+i*Nyr+j;
+         int indf=d1*dM*Nx*Nyr+m*Nx*Nyr+i*Nyr+j;
+         cufftComplex ofreq=ofreq_d[ind];
+         cufftComplex freqin=freqin_d[ind];
+         cufftComplex freqout=freqout_d[ind];
+         cufftComplex ffreq=ffreq_d[indf];
+         sumcRR+=(ofreq.x-freqout.x)*ffreq.x;
+         sumcRI+=(ofreq.x-freqout.x)*ffreq.y;
+         sumcIR+=(ofreq.y-freqout.y)*ffreq.x;
+         sumcII+=(ofreq.y-freqout.y)*ffreq.y;
+         //f derivative sums over d
+         int indc=m*dD*Nx*Nyr+d1*Nx*Nyr+i*Nyr+j;
+         cufftComplex cfreq=cfreq_d[indc];
+         sumfR+=cfreq.x*freqin.x-cfreq.y*freqin.y;
+         sumfI+=cfreq.x*freqin.y+cfreq.y*freqin.x;
+         //b derivative sum over d
+         if(i==0 && j==0)
+            sumb+=(ofreq.x-freqout.x)*ffreq.x+(ofreq.y-freqout.y)*ffreq.y;
+      }
+      //c update
+      int ind=d*Nx*Nyr+i*Nyr+j;
+      cufftComplex freqin=freqin_d[ind];
+      cufftComplex freqout=freqout_d[ind];
+      float dDR=sumcRR*freqin.x-sumcRI*freqin.y+sumcIR*freqin.y+sumcII*freqin.x;
+      float dDI=-sumcRR*freqin.y-sumcRI*freqin.x+sumcIR*freqin.x-sumcII*freqin.y;
+      float dDdCR=dDR/Norm;
+      float dDdCI=dDI/Norm;
+      cufftComplex dc;
+      dc.x=dDdCR;
+      dc.y=dDdCI;
+      dc_d[idx]=dc;
+      //f update
+      int idxf=d*dM*Nx*Nyr+m*Nx*Nyr+i*Nyr+j;
+      float b0=0;
+      if(i==0 && j==0) 
+         b0=b_d[m]*norm;
+      cufftComplex ofreq=ofreq_d[ind];
+      float diffR=ofreq.x-freqout.x;
+      float diffI=ofreq.y-freqout.y;
+      dDR=diffR*(sumfR+b0)+diffI*sumfI;
+      dDI=-diffR*sumfI+diffI*(sumfR+b0);
+      float dDdFR=dDR/Norm;
+      float dDdFI=dDI/Norm;
+      cufftComplex df;
+      df.x=dDdFR;
+      df.y=dDdFI;
+      df_d[idxf]=df;
+      //b update
+      if(i==0 && j==0 && d==0)
+      {
+         float dDdB=sumb*norm/Norm;
+         db_d[m]=dDdB;
+      }
+      //p update
+      if(i==0 && j==0 && m==0)
+      {
+         float dDdP=(ofreq.x-freqout.x)*norm/Norm;
+         dp_d[d]=dDdP;
+      }
+   }
+}
 
 /////////////////////////////////////////////////////////////
 
@@ -1395,20 +1378,21 @@ void autoenc_fft(vector<vector<vector<vector<float> > > >& layers, vector<vector
 /////////////////////////////////////////////////////////////
 
 //run backpropagation in fft space
-void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<float> > >& out, vector<float>& cfreq, vector<vector<vector<vector<float> > > >& c, vector<float>& ffreq, vector<vector<vector<vector<float> > > >& f, vector<float>& b, vector<float>& p, int dM, float del0, int maxdiff)
+void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<float> > >& expout, vector<vector<vector<float> > >& out, vector<float>& cfreq, vector<vector<vector<vector<float> > > >& c, vector<float>& ffreq, vector<vector<vector<vector<float> > > >& f, vector<float>& b, vector<float>& p, int dM, float del0, int maxdiff)
 {
    int dD=in.size();
    int Nx=in[0].size();
    int Ny=in[0][0].size();
    int Nk=c[0][0].size();
    int Nl=c[0][0][0].size();
-   cufftComplex *freq_d, *hfreq_d, *ofreq_d, *cfreq_d, *ffreq_d;
+   cufftComplex *freq_d, *freqo_d, *hfreq_d, *ofreq_d, *cfreq_d, *ffreq_d;
    cufftReal *c_d, *f_d, *b_d, *p_d;
    cufftReal *Dc_d, *Df_d, *Db_d, *Dp_d;
    cufftReal *ddc, *ddf, *ddb, *ddp;
    cufftComplex *dc_d, *df_d;
    cufftReal *db_d, *dp_d;
    cudaMalloc(&freq_d, dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
+   cudaMalloc(&freqo_d, dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMalloc(&hfreq_d, dM*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMalloc(&ofreq_d, dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
    cudaMalloc(&cfreq_d, dM*dD*Nx*(Ny/2+1)*sizeof(cufftComplex));
@@ -1444,6 +1428,7 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
 
    //fft in out
    fft(in,freq_d);
+   fft(expout,freqo_d);
    fft(out,ofreq_d);
    //load fft conv weights
    load_cfreq(cfreq, b, cfreq_d, b_d, dM, dD, Nx, Ny/2+1);
@@ -1452,32 +1437,30 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
    flatten_kernel(f,f_d);
 
    //mse fft
-   float vmse=mse_fft(freq_d, ofreq_d, dM, dD, Nx, Ny);
+   float vmse=mse_fft(freqo_d, ofreq_d, dM, dD, Nx, Ny);
    cout<<"mse fft: "<<vmse<<endl;
    //float vmse_prev=vmse;
    //backpropagation
    //float del=0.00002;
-   float del=0.01*del0;
+   float del=0.1*del0;
    for(int n=0;n<100;n++)
    {
       int threads=256;
       int blocks=(dM*dD*Nx*(Ny/2+1))/threads+1;
-//      backprop_k<<<blocks,threads>>>(freq_d, ofreq_d, cfreq_d, ffreq_d, b_d, p_d, 
-//                                    cfreq1_d, ffreq1_d, b1_d, p1_d, 
-//                                    dc_d, df_d, db_d, dp_d, 
-//                                    ddc_d, ddf_d, ddb_d, ddp_d, 
-//                                    dM, dD, Nx, Ny);
       //float del=del0;
       //if(vmse<10) del=10*del0;
-      gradient_k<<<blocks,threads>>>(freq_d, ofreq_d, cfreq_d, ffreq_d, b_d, p_d,  
-                                    dc_d, df_d, db_d, dp_d, dM, dD, Nx, Ny);
+//      gradient_k<<<blocks,threads>>>(freq_d, ofreq_d, cfreq_d, ffreq_d, b_d, p_d,  
+//                                    dc_d, df_d, db_d, dp_d, dM, dD, Nx, Ny);
+      gradient_k_io<<<blocks,threads>>>(freq_d, freqo_d, ofreq_d, cfreq_d, ffreq_d, b_d, p_d,  
+                                        dc_d, df_d, db_d, dp_d, dM, dD, Nx, Ny);
       backprop(c_d, f_d, cfreq_d, ffreq_d, b_d, p_d, dc_d, df_d, db_d, dp_d, 
                Dc_d, Df_d, Db_d, Dp_d, ddc, ddf, ddb, ddp, 
                dM, dD, Nx, Ny, Nk, Nl, del, maxdiff);
 
       conv_fft(freq_d, hfreq_d, cfreq_d, b_d, dM, dD, Nx, Ny);
       conv_fft(hfreq_d, ofreq_d, ffreq_d, p_d, dD, dM, Nx, Ny);
-      float vmse=mse_fft(freq_d, ofreq_d, dM, dD, Nx, Ny);
+//      float vmse=mse_fft(freq_d, ofreq_d, dM, dD, Nx, Ny);
+      float vmse=mse_fft(freqo_d, ofreq_d, dM, dD, Nx, Ny);
       cout<<"n: "<<n<<" mse: "<<vmse<<endl;
 //      if(vmse<vmse_prev)
 //      {
@@ -1504,6 +1487,7 @@ void backprop_fft(vector<vector<vector<float> > >& in, vector<vector<vector<floa
    export_cfreq(c, b, cfreq_d, b_d, dM, dD, Nx, Ny);
    export_cfreq(f, p, ffreq_d, p_d, dD, dM, Nx, Ny);
    cudaFree(freq_d);
+   cudaFree(freqo_d);
    cudaFree(hfreq_d);
    cudaFree(ofreq_d);
    cudaFree(cfreq_d);

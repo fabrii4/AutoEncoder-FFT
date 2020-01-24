@@ -126,10 +126,10 @@ int main()
       //ImageToSpin_C(imgC,expout);
 
       //apply coder-decoder convolutions
-         //auto start0 = std::chrono::high_resolution_clock::now();
-      if(fft==1)
+         auto start0 = std::chrono::high_resolution_clock::now();
+      if(fft==1) //autoencoder in frequency space
          autoenc_fft(layers, net_c, net_cfreq, net_b, scale, fft_l);
-      else
+      else //autoencoder in configuration space
       {
          for(int n=0;n<net_c.size();n++)
          {
@@ -148,9 +148,9 @@ int main()
             }
          }
       }
-         //auto finish0 = std::chrono::high_resolution_clock::now();
-         //std::chrono::duration<double> elapsed0 = finish0 - start0;
-         //std::cout << "Convolution Time: " << elapsed0.count() << " s\r"<<flush;
+         auto finish0 = std::chrono::high_resolution_clock::now();
+         std::chrono::duration<double> elapsed0 = finish0 - start0;
+         std::cout << "Convolution Time: " << elapsed0.count() << " s\r"<<flush;
 
 
       //backpropagation
@@ -164,7 +164,9 @@ int main()
          vector<vector<vector<float> > > in_s(dD, vector<vector<float> >(dNx/q, vector<float>(dNy/q)));
          vector<vector<vector<float> > > out_s(dD, vector<vector<float> >(dNx/q, vector<float>(dNy/q)));
          vector<vector<vector<float> > > hC_s(dM, vector<vector<float> >(dNx/q, vector<float>(dNy/q)));
-         Portion(layers[2*n_l+1],layers[2*n_l+2],layers[layers.size()-2-2*n_l],in_s,hC_s,out_s,q);
+         //consider a portion of original input for training          
+         Portion(layers[2*n_l+1], layers[2*n_l+2], layers[layers.size()-2-2*n_l], in_s, hC_s, out_s, q);
+         //train in gpu in configuration space
          if(gpu==1 && fft==0) 
          {
             if(sym==0)
@@ -174,6 +176,7 @@ int main()
                                  dc, db, df, dp, 
                                  ddc, ddb, ddf, ddp, 
                                  del, alpha, active);
+            //train symmetric weights c=f
             else
                backprop_gpu_cc(in_s, out_s, hC_s,
                                  net_c[n_l], net_b[n_l], net_c[net_c.size()-1-n_l], 
@@ -182,6 +185,7 @@ int main()
                                  ddc, ddb, ddf, ddp, 
                                  del, alpha, active);
          }
+         //train in gpu in frequency space
          else if(gpu==1 && fft==1)
          {
             //expout1=expout;
@@ -191,6 +195,7 @@ int main()
                          net_b[n_l], net_b[net_c.size()-1-n_l], dM, del, maxdiff);
             sel=0;
          }
+         //train in cpu in configuration space
          else backprop(in_s, out_s, hC_s, net_c[n_l], net_b[n_l], net_c[net_c.size()-1-n_l], 
                                  net_b[net_c.size()-1-n_l], del);
          auto finish = std::chrono::high_resolution_clock::now();

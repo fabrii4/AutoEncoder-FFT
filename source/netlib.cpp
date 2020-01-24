@@ -436,7 +436,7 @@ void backprop(vector<vector<vector<float> > >& in, vector<vector<vector<float> >
                //   cout<<"dDdC cpu "<<dDdC<<" "<<dDdB<<" "<<dDdF<<" "<<dDdP<<endl;
                c[m][d][k][l]+=-del*dDdC/((10<abs(dDdC))?abs(dDdC):10);
                f[d][m][k][l]+=-del*dDdF/((10<abs(dDdF))?abs(dDdF):10);
-               cout<<m<<"|"<<dM<<" "<<d<<"|"<<dD<<" "<<k<<"|"<<Nk<<" "<<l<<"|"<<Nl<<" "<<c[m][d][k][l]<<endl;
+               //cout<<m<<"|"<<dM<<" "<<d<<"|"<<dD<<" "<<k<<"|"<<Nk<<" "<<l<<"|"<<Nl<<" "<<c[m][d][k][l]<<endl;
                if(k==0 && l==0)
                {
                   if(d==0) b[m]+=-del*dDdB/((10<abs(dDdB))?abs(dDdB):10);

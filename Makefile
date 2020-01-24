@@ -1,5 +1,5 @@
 ##############################
-# SoNet Makefile
+# AutoEnc Makefile
 ##############################
 
 #INSTALLROOT=$(PWD)
@@ -104,6 +104,6 @@ $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
 
 
-#install: SoNet
+#install: AutoEnc
 #	$(INSTALL) -s -m 755 -g root -o root $(BINARY) $(BIN) 
 #	rm -f $(BIN)/$(BINARY)

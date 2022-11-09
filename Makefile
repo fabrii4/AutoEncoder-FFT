@@ -13,8 +13,8 @@ BINARY=AutoEnc
 #VERSION = 0.0.1
 
 CPPFLAGS = -O3 -std=c++11
-OPENCVLIBS = `pkg-config --cflags --libs opencv`
-CPPCUDA = -L/usr/local/cuda-10.0/lib64 -lcudart -lcudadevrt -lcufft #-lcublas_device
+OPENCVLIBS = -I /usr/include/opencv4/ -lopencv_core -lopencv_videoio -lopencv_highgui -lopencv_imgproc
+CPPCUDA = -L/usr/local/cuda/lib64 -lcudart -lcudadevrt -lcufft #-lcublas_device
 CUDAFLAGS = -gencode arch=compute_50,code=sm_50 --use_fast_math -lineinfo
 #CUDAFLAGS = -ccbin g++ -m64 -gencode arch=compute_50,code=sm_50
 #for multiple GPU architectures use instead

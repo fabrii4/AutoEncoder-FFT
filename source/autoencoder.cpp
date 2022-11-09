@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include<fstream>
 #include <chrono>
+#include <cstdlib>
 
 #include "netlib.h"
 #include "backproplib.h"
@@ -51,18 +52,18 @@ int main()
 //   vector<vector<vector<float> > > expout1;
    Mat imgC(Size(Nx,Ny),CV_8UC3);
    VideoCapture cam(0);
-   namedWindow("input",CV_WINDOW_NORMAL);
+   namedWindow("input",cv::WINDOW_NORMAL);
    moveWindow("input",100,100);
    resizeWindow("input", 200,200);
-   namedWindow("output",CV_WINDOW_NORMAL);
+   namedWindow("output",cv::WINDOW_NORMAL);
    moveWindow("output",400,100);
    resizeWindow("output", 200,200);
-   namedWindow("output1",CV_WINDOW_NORMAL);
-   moveWindow("output1",100,400);
-   resizeWindow("output1", 200,200);
-   namedWindow("output2",CV_WINDOW_NORMAL);
-   moveWindow("output2",400,400);
-   resizeWindow("output2", 200,200);
+   namedWindow("feature map",cv::WINDOW_NORMAL);
+   moveWindow("feature map",100,400);
+   resizeWindow("feature map", 200,200);
+   namedWindow("kernel",cv::WINDOW_NORMAL);
+   moveWindow("kernel",400,400);
+   resizeWindow("kernel", 200,200);
 
    //Convolutional and pooling layers
    vector<vector<vector<float> > > in(D, vector<vector<float> >(Nx, vector<float>(Ny)));
@@ -126,7 +127,7 @@ int main()
       //ImageToSpin_C(imgC,expout);
 
       //apply coder-decoder convolutions
-         auto start0 = std::chrono::high_resolution_clock::now();
+         //auto start0 = std::chrono::high_resolution_clock::now();
       if(fft==1) //autoencoder in frequency space
          autoenc_fft(layers, net_c, net_cfreq, net_b, scale, fft_l);
       else //autoencoder in configuration space
@@ -148,15 +149,15 @@ int main()
             }
          }
       }
-         auto finish0 = std::chrono::high_resolution_clock::now();
-         std::chrono::duration<double> elapsed0 = finish0 - start0;
-         std::cout << "Convolution Time: " << elapsed0.count() << " s\r"<<flush;
+         //auto finish0 = std::chrono::high_resolution_clock::now();
+         //std::chrono::duration<double> elapsed0 = finish0 - start0;
+         //std::cout << "Convolution Time: " << elapsed0.count() << " s\r"<<flush;
 
 
       //backpropagation
       if(sel==1)
       {
-         auto start = std::chrono::high_resolution_clock::now();
+         //auto start = std::chrono::high_resolution_clock::now();
          int dD=layers[2*n_l+1].size();
          int dNx=layers[2*n_l+1][0].size();
          int dNy=layers[2*n_l+1][0][0].size();
@@ -198,9 +199,9 @@ int main()
          //train in cpu in configuration space
          else backprop(in_s, out_s, hC_s, net_c[n_l], net_b[n_l], net_c[net_c.size()-1-n_l], 
                                  net_b[net_c.size()-1-n_l], del);
-         auto finish = std::chrono::high_resolution_clock::now();
-         std::chrono::duration<double> elapsed = finish - start;
-         std::cout << "Time: " << elapsed.count() << " s\n";
+         //auto finish = std::chrono::high_resolution_clock::now();
+         //std::chrono::duration<double> elapsed = finish - start;
+         //std::cout << "Time: " << elapsed.count() << " s\n";
       }
 
 //ix=126,iy=208;
@@ -223,7 +224,7 @@ int main()
       //module feaute maps
       Mat output_h(Size(Nxh,Nyh),CV_8U);
       SpinToImage_V(output_h,layers[2*n_l+2][feat]);
-      imshow("output1",output_h);
+      imshow("feature map",output_h);
       //module features
       int dMo=net_c[n_l].size();
       int dDo=net_c[n_l][0].size();
@@ -238,10 +239,10 @@ int main()
          Roi.copyTo(output_c(Rec));
       }
       //normalize(output_c, output_c, 255, 0);
-      imshow("output2",output_c);
+      imshow("kernel",output_c);
 
       //keyboard controls
-      char ch = cvWaitKey(10);
+      char ch = waitKey(10);
       if(27 == char(ch)) break;
       if(ch=='1') {sel=(sel+1)%2; cout<<"backpropagation "<<sel<<endl;}
       if(ch=='2') {q=q+1; cout<<"q                          "<<q<<endl;}
